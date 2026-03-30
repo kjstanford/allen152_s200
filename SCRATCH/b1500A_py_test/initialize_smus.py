@@ -8,6 +8,22 @@ b1500 = AgilentB1500("GPIB0::16::INSTR", read_termination='\r\n', write_terminat
 # Patch the query_modules method to recognize the B1530A WGFMU
 
 def patched_query_modules():
+    """
+    Replacement for AgilentB1500.query_modules() that adds support for the B1530A WGFMU.
+
+    The stock pymeasure driver does not recognise the B1530A model string, causing
+    initialize_all_smus() to fail on chassis that contain one.  This function sends
+    the same 'UNT? 0' query but uses an extended module_names map that includes the
+    B1530A.  The B1530A entry is returned as 'WGFMU'; because initialize_all_smus()
+    only creates SMU objects for HPSMU/MPSMU/HRSMU types, the WGFMU slot is silently
+    skipped while all other SMUs are initialised normally.
+
+    Returns
+    -------
+    dict
+        Mapping of slot index (1-based int) to module type string
+        (e.g. {2: 'HRSMU', 3: 'HRSMU', 4: 'HRSMU'}).
+    """
     # We define the map locally including the missing B1530A
     # This is based on the source code of pymeasure AgilentB1500
     module_names = {

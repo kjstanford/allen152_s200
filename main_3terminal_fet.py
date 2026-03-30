@@ -1,4 +1,87 @@
-mode = 'save'  # Options: 'debug', 'nosave', 'save'
+"""
+3-Terminal FET Measurement Script
+==================================
+Runs automated Id-Vg and Id-Vd IV sweeps on a Keysight B1500A via a Cascade S200 probe station.
+
+Usage
+-----
+    python main_3terminal_fet.py --config <path_to_config.json>
+
+Example
+-------
+    python main_3terminal_fet.py --config configs/main_3terminal_fet_config.json
+
+Config File Parameters (JSON)
+------------------------------
+Top-level:
+    mode        str   Execution mode: "save" (measure + save), "nosave" (measure only), "debug" (skip hardware)
+    save_dir    str   Output directory for CSV and PNG files (e.g. "saved_data/my_run")
+
+instrument:
+    Irange      str   Current measurement range passed to B1500A SMUs (e.g. "1 nA limited auto ranging")
+    Vrange      str   Voltage measurement range passed to B1500A SMUs (e.g. "2 V limited auto ranging")
+
+device:
+    W_nm        float Channel width in nm (used for normalised Vt extraction, e.g. 10000)
+
+gate_voltage:
+    default_start   float   Initial gate sweep start in V (e.g. -3.0)
+    start_limit     float   Hard lower bound on gate start; device is skipped if this would be exceeded (e.g. -3.5)
+    default_stop    float   Gate sweep stop in V (e.g. 3.0)
+    stop_limit      float   Hard upper bound on gate stop (e.g. 3.5)
+    scan_step       float   Step size for the quick initial scan in V (e.g. 0.1)
+    main_step       float   Step size for the main high-resolution sweep in V (e.g. 0.025)
+
+drain_voltage:
+    Vdlin           float         Drain bias used in initial linear-region scan (e.g. 0.05)
+    Vdsat           float         Drain bias used in initial saturation-region scan (e.g. 1.0)
+    IdVg_drain_list list[float]   Drain voltages swept during main Id-Vg measurement (e.g. [0.05, 1.0])
+    IdVd_sweep_start float        Drain sweep start for Id-Vd measurement in V (e.g. 0.0)
+    IdVd_sweep_stop  float        Drain sweep stop for Id-Vd measurement in V (e.g. 1.0)
+    IdVd_sweep_step  float        Drain sweep step size in V (e.g. 0.025)
+    Vov_list        list[float]   Gate overdrive voltages (Vov = Vg - Vt) for Id-Vd gate bias list (e.g. [1.0, 1.25, ...])
+
+measurement:
+    IdVg_cycles     int   Number of repeated Id-Vg sweep cycles (e.g. 2)
+    IdVd_cycles     int   Number of repeated Id-Vd sweep cycles (e.g. 1)
+
+wafer_layout:
+    start_DieR_idx  int           Die row index to start from (0-indexed from bottom)
+    start_DieC_idx  int           Die column index to start from (0-indexed from left)
+    start_LcR_idx   int           Contact-length cluster row index to start from
+    start_LcC_idx   int           Contact-length cluster column index to start from
+    DieR_idx_list   list[int]     Die rows to measure
+    DieC_idx_list   list[int]     Die columns to measure
+    die_x_pitch     float         Die centre-to-centre pitch in X in microns
+    die_y_pitch     float         Die centre-to-centre pitch in Y in microns
+    Lc_list         list[list]    2D array of contact lengths in nm indexed [LcR][LcC]
+    LcR_idx_list    list[int]     Lc cluster row indices to iterate over
+    LcC_idx_list    list[int]     Lc cluster column indices to iterate over
+    Lc_x_pitch      float         Lc cluster centre-to-centre pitch in X in microns
+    Lc_y_pitch      float         Lc cluster centre-to-centre pitch in Y in microns
+    dev_code_list   list[str]     Device letter codes within each L row (e.g. ["A","B",...,"L"])
+    L_list          list[int]     Channel lengths in nm to measure (e.g. [60, 80, ..., 2000])
+    L_skip_list     list[int]     Channel lengths to skip entirely (e.g. [1000, 2000])
+    dev_x_pitch     float         Device-to-device pitch in X within an L row in microns
+    dev_y_pitch     float         Device-to-device pitch in Y between L rows in microns (negative = move up)
+    reverse_L       bool          If true, iterate L_list in reverse and flip dev_y_pitch sign
+    skip_combinations list        List of (DieR, DieC, LcR, LcC, L_idx, dev_code) tuples to skip
+"""
+
+import argparse
+import json
+import os
+
+def _parse_args():
+    p = argparse.ArgumentParser(description='3-terminal FET measurement script')
+    p.add_argument('--config', required=True, help='Path to JSON config file')
+    return p.parse_args()
+
+_args = _parse_args()
+with open(_args.config) as _f:
+    _cfg = json.load(_f)
+
+mode = _cfg.get('mode', 'save')
 
 from data_processing_utils.IdVg_param_extract import *
 
@@ -11,7 +94,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
-import os
 from math import ceil, floor
 
 current_dir = os.getcwd()
@@ -20,24 +102,36 @@ myb1500 = b1500
 smu_gate = b1500.smu3
 smu_drain = b1500.smu2
 smu_source = b1500.smu4
-default_gate_start = -3.0
-gate_start_limit = -3.5
-default_gate_stop = 3.0
-gate_stop_limit = 3.5
-scan_gate_step = 0.1
-main_gate_step = 0.025
-default_Vdlin = 0.05
-default_Vdsat = 1.0
-default_Vdlin1 = 0.05
-default_Vdlin2 = 0.1
-default_Vdsat1 = 1.0
-default_Vdsat2 = 2.0
-W = 10e3 # in nm
-save_dir = os.path.join("saved_data", "Ni_PFA_run_Jan20_2026")
-drain_start = 0
-drain_stop = 1.0
-drain_step = 0.025
-Vov_list = [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
+
+_gv   = _cfg['gate_voltage']
+_dv   = _cfg['drain_voltage']
+_meas = _cfg['measurement']
+_inst = _cfg.get('instrument', {})
+
+default_gate_start = _gv['default_start']
+gate_start_limit   = _gv['start_limit']
+default_gate_stop  = _gv['default_stop']
+gate_stop_limit    = _gv['stop_limit']
+scan_gate_step     = _gv['scan_step']
+main_gate_step     = _gv['main_step']
+
+default_Vdlin   = _dv['Vdlin']
+default_Vdsat   = _dv['Vdsat']
+IdVg_drain_list = _dv['IdVg_drain_list']
+drain_start     = _dv['IdVd_sweep_start']
+drain_stop      = _dv['IdVd_sweep_stop']
+drain_step      = _dv['IdVd_sweep_step']
+Vov_list        = _dv['Vov_list']
+
+W        = _cfg['device']['W_nm']
+save_dir = _cfg['save_dir']
+
+num_cycles_IdVg = _meas['IdVg_cycles']
+num_cycles_IdVd = _meas['IdVd_cycles']
+
+Irange = _inst.get('Irange', '1 nA limited auto ranging')
+Vrange = _inst.get('Vrange', '2 V limited auto ranging')
+
 cycle_colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
 
 def measure_initial_scan(gate_start=default_gate_start, gate_stop=default_gate_stop, gate_step=scan_gate_step, L=None, data_all=None, descriptor=None):
@@ -53,7 +147,7 @@ def measure_initial_scan(gate_start=default_gate_start, gate_stop=default_gate_s
     else:
         if myb1500 is None or smu_gate is None or smu_drain is None or smu_source is None:
             raise Exception("B1500 and SMUs must be initialized before calling measure_initial_scan in non-debug mode.")
-        
+
         # Initial Id-Vg scan to check if device is working / measuring VT
         data = IdVg_single_Vd(
             b1500=myb1500,
@@ -64,8 +158,8 @@ def measure_initial_scan(gate_start=default_gate_start, gate_stop=default_gate_s
             gate_stop=gate_stop,
             gate_step=gate_step,
             drain_voltage=default_Vdlin,
-            Irange='1 nA limited auto ranging',
-            Vrange='2 V limited auto ranging'
+            Irange=Irange,
+            Vrange=Vrange
         )
 
         # Plot Id-Vg curve
@@ -105,7 +199,7 @@ def measure_initial_scan(gate_start=default_gate_start, gate_stop=default_gate_s
         print("Failed to extract Vt, device may be faulty.")
         skip_device_flag = True
         return skip_device_flag, new_gate_start, new_gate_stop, Vt_lin
-    
+
     if Vt_lin < -2 or Vt_lin > 1.5:
         print("Extracted Vt is out of expected range (-2 V to 1.5 V), device may be faulty.")
         skip_device_flag = True
@@ -180,7 +274,7 @@ def measure_initial_scan_v2(gate_start=default_gate_start, gate_stop=default_gat
     else:
         if myb1500 is None or smu_gate is None or smu_drain is None or smu_source is None:
             raise Exception("B1500 and SMUs must be initialized before calling measure_initial_scan in non-debug mode.")
-        
+
         # Initial Id-Vg scan to check if device is working / measuring VT
         data = IdVg_single_Vd(
             b1500=myb1500,
@@ -191,8 +285,8 @@ def measure_initial_scan_v2(gate_start=default_gate_start, gate_stop=default_gat
             gate_stop=gate_stop,
             gate_step=gate_step,
             drain_voltage=default_Vdsat,
-            Irange='1 nA limited auto ranging',
-            Vrange='2 V limited auto ranging'
+            Irange=Irange,
+            Vrange=Vrange
         )
 
         # Plot Id-Vg curve
@@ -232,7 +326,7 @@ def measure_initial_scan_v2(gate_start=default_gate_start, gate_stop=default_gat
         print("Failed to extract Vt, device may be faulty.")
         skip_device_flag = True
         return skip_device_flag, new_gate_start, new_gate_stop, Vt_sat
-    
+
     if Vt_sat < -3.5 or Vt_sat > 2:
         print("Extracted Vt is out of expected range (-3.5 V to 2 V), device may be faulty.")
         skip_device_flag = True
@@ -292,10 +386,10 @@ def measure_main_IdVg(gate_start, gate_stop, gate_step, descriptor=None):
         gate_start=gate_start,
         gate_stop=gate_stop,
         gate_step=gate_step,
-        drain_list=[default_Vdlin1, default_Vdsat1],
-        num_cycles=2,
-        Irange='1 nA limited auto ranging',
-        Vrange='2 V limited auto ranging'
+        drain_list=IdVg_drain_list,
+        num_cycles=num_cycles_IdVg,
+        Irange=Irange,
+        Vrange=Vrange
     )
 
     # Plot Id-Vg curves for different drain voltages
@@ -351,9 +445,9 @@ def measure_main_IdVd(Vt_lin, descriptor=None):
         drain_start=drain_start,
         drain_stop=drain_stop,
         drain_step=drain_step,
-        num_cycles=1,
-        Irange='1 nA limited auto ranging',
-        Vrange='2 V limited auto ranging'
+        num_cycles=num_cycles_IdVd,
+        Irange=Irange,
+        Vrange=Vrange
     )
 
     # Plot Id-Vd curves for different gate voltages
@@ -414,33 +508,30 @@ def measure_all_v2(L, descriptor=None):
 #     rm.close()
 
 def main():
-    start_DieR_idx = 1 # 0 = bottom row 
-    start_DieC_idx = 0 # 0 = leftmost column
-    start_LcR_idx = 1
-    start_LcC_idx = 1
-
-    dev_x_pitch = 200
-    dev_y_pitch = -200
-    dev_code_list = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
-    L_list = [60, 80, 100, 150, 200, 250, 300, 400, 500, 700, 1000, 2000]
-    reverse_L = False
+    layout = _cfg['wafer_layout']
+    start_DieR_idx = layout['start_DieR_idx']
+    start_DieC_idx = layout['start_DieC_idx']
+    start_LcR_idx  = layout['start_LcR_idx']
+    start_LcC_idx  = layout['start_LcC_idx']
+    dev_x_pitch    = layout['dev_x_pitch']
+    dev_y_pitch    = layout['dev_y_pitch']
+    dev_code_list  = layout['dev_code_list']
+    L_list         = layout['L_list']
+    reverse_L      = layout.get('reverse_L', False)
     if reverse_L:
         L_list = L_list[::-1]
         dev_y_pitch = -dev_y_pitch
-
-    assert len(dev_code_list) == 12, "dev_code_list must have 12 entries corresponding to 12 devices per L."
-    assert len(L_list) == 12, "L_list must have 12 entries corresponding to 12 device lengths."
-    Lc_x_pitch = 2600
-    Lc_y_pitch = -2806.7
-    Lc_list = [[60, 80], [100, 500]]
-    LcR_idx_list = [1, 0]
-    LcC_idx_list = [1, 0]
-    DieR_idx_list = [start_DieR_idx]
-    DieC_idx_list = [start_DieC_idx]
-    die_x_pitch = 8000
-    die_y_pitch = 8000
-
-    skip_combinations = [] # [(0, 1, 0, 1, 6, 'K')] # [(1, 0, 1, 1, 10, 'A')] # [(0, 1, 1, 1, 6, 'B'), (1, 1, 1, 1, 8, 'H')]
+    Lc_x_pitch   = layout['Lc_x_pitch']
+    Lc_y_pitch   = layout['Lc_y_pitch']
+    Lc_list      = layout['Lc_list']
+    LcR_idx_list = layout['LcR_idx_list']
+    LcC_idx_list = layout['LcC_idx_list']
+    DieR_idx_list = layout['DieR_idx_list']
+    DieC_idx_list = layout['DieC_idx_list']
+    die_x_pitch   = layout['die_x_pitch']
+    die_y_pitch   = layout['die_y_pitch']
+    L_skip_list   = layout.get('L_skip_list', [])
+    skip_combinations = [tuple(c) for c in layout.get('skip_combinations', [])]
 
     current_x_displace_from_origin = 0
     current_y_displace_from_origin = 0
@@ -457,7 +548,7 @@ def main():
                             Lc = Lc_list[LcR_idx][LcC_idx]
                             descriptor = f"DieR{DieR_idx}_DieC{DieC_idx}_LcR{LcR_idx}_LcC{LcC_idx}_Lc{Lc}nm_L{L}nm_Dev{dev_code}"
 
-                            if L in [1000, 2000]:
+                            if L in L_skip_list:
                                 continue
 
                             # if Lc not in [60, 80]:
@@ -476,9 +567,9 @@ def main():
                                             print(f"Data for Die Row={DieR_idx}, Column={DieC_idx}, Lc={Lc} nm, L={L} nm, DevCode={dev_code} already exists, skipping measurement.")
                                             measured_previously = True
                                             break
-                            
+
                             if measured_previously:
-                                    continue                                       
+                                    continue
 
                             print(f"Moving to Die Row={DieR_idx}, Column={DieC_idx}, Lc={Lc} nm, L={L} nm, DevCode={dev_code}...")
                             reqd_x_displace_from_origin = die_x_pitch * (DieC_idx-start_DieC_idx) + Lc_x_pitch * (LcC_idx-start_LcC_idx) + dev_x_pitch * dev_idx
@@ -496,56 +587,4 @@ def main():
 if __name__ == "__main__":
     main()
     prober.close()
-    rm.close()                     
-
-                
-                
-
-# DEBUG HERE
-# if __name__ == "__main__":
-#     # List to store relative paths to all CSV files
-#     csv_files = []
-
-#     # Walk through the directory and subdirectories
-#     for root, dirs, files in os.walk(os.path.join(current_dir, "saved_data", "trial_run_Jan09_2026")):
-#         for file in files:
-#             if file.endswith('.csv'):
-#                 # Get the relative path of the file
-#                 relative_path = os.path.relpath(os.path.join(root, file), current_dir)
-#                 if 'IGNORE' in relative_path:
-#                     continue
-#                 # Add to the dictionary
-#                 csv_files.append(relative_path)
-
-#     L_list = [60, 80, 100, 150, 200, 250, 300, 500, 700, 1000]
-#     num_dev_per_L = 13
-#     DieR_idx = 0
-#     DieC_idx = 0
-
-#     for L in L_list:
-#         for dev_idx in range(num_dev_per_L):
-#             test_name = f"DieR{DieR_idx}_DieC{DieC_idx}_L{L}nm_Dev{dev_idx}"
-#             matching_files = [f for f in csv_files if test_name in f]
-#             if not matching_files:
-#                 print(f"No data file found for {test_name}, skipping...")
-#                 continue
-#             data_path = matching_files[0]
-#             print(f"\nProcessing file: {data_path}")
-#             data_all = pd.read_csv(data_path)
-#             skip_device_flag, new_gate_start, new_gate_stop, Vt_lin = measure_initial_scan(L=L, data_all=data_all)
-#             if skip_device_flag:
-#                 print("SKIPPING DEVICE BASED ON INITIAL SCAN EVALUATION.....\n")
-#                 # # Plot Id-Vg curve
-#                 # plt.figure(figsize=(8, 6))
-#                 # plt.semilogy(data_all['Gate_Voltage'].to_numpy(), np.abs(data_all['Drain_Current'].to_numpy()), label=f'Vd = {default_Vdlin} V')
-#                 # plt.xlabel('Gate Voltage (V)')
-#                 # plt.ylabel('Drain Current (A)')
-#                 # plt.title('Initial Id-Vg Scan')
-#                 # plt.legend()
-#                 # plt.grid(True)
-#                 # plt.show(block=False)
-#                 # plt.pause(10)
-#                 # plt.close()
-#             else:
-#                 print("DEVICE PASSED INITIAL SCAN EVALUATION.")
-#                 print(f"Proceeding with main measurement sequence with gate voltage range {new_gate_start} V to {new_gate_stop} V and Vt_lin = {Vt_lin} V\n")
+    rm.close()

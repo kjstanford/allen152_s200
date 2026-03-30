@@ -1,0 +1,54 @@
+{
+  "mode": "save",
+  "save_dir": "saved_data/medium_roughness_in2o3_pt_fet",
+
+  "instrument": {
+    "Irange": "1 nA limited auto ranging",
+    "Vrange": "2 V limited auto ranging"
+  },
+
+  "device": {
+    "W_nm": 10000
+  },
+
+  "gate_voltage": {
+    "default_start": -1.0,
+    "start_limit":   -1.5,
+    "default_stop":   3.0,
+    "stop_limit":     3.5,
+    "scan_step":      0.1,
+    "main_step":      0.025
+  },
+
+  "drain_voltage": {
+    "Vdlin":            0.05,
+    "Vdsat":            1.0,
+    "IdVg_drain_list":  [0.05, 1.0],
+    "IdVd_sweep_start": 0.0,
+    "IdVd_sweep_stop":  1.0,
+    "IdVd_sweep_step":  0.025,
+    "Vov_list":         [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
+  },
+
+  "measurement": {
+    "IdVg_cycles": 2,
+    "IdVd_cycles": 1
+  },
+
+  "wafer_layout": {
+    "start_DieR_idx":  0,
+    "start_DieC_idx":  0,
+    "start_dev_x_idx": 0,
+    "start_dev_y_idx": 0,
+    "DieR_idx_list":   [0],
+    "DieC_idx_list":   [0],
+    "die_x_pitch":     8000,
+    "die_y_pitch":     8000,
+    "dev_x_list":      ["A", "B", "C", "D"],
+    "dev_y_list":      [0, 1, 2, 3, 4],
+    "dev_x_pitch":     250,
+    "dev_y_pitch":     -250,
+    "L":               5000,
+    "skip_combinations": []
+  }
+}

@@ -1,4 +1,17 @@
-mode = 'save'  # Options: 'debug', 'nosave', 'save'
+import argparse
+import json
+import os
+
+def _parse_args():
+    p = argparse.ArgumentParser(description='3-terminal FET measurement script (v1)')
+    p.add_argument('--config', required=True, help='Path to JSON config file')
+    return p.parse_args()
+
+_args = _parse_args()
+with open(_args.config) as _f:
+    _cfg = json.load(_f)
+
+mode = _cfg.get('mode', 'save')
 
 from data_processing_utils.IdVg_param_extract import *
 
@@ -11,7 +24,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
-import os
 from math import ceil, floor
 
 current_dir = os.getcwd()
@@ -20,24 +32,36 @@ myb1500 = b1500
 smu_gate = b1500.smu3
 smu_drain = b1500.smu2
 smu_source = b1500.smu4
-default_gate_start = -1.0
-gate_start_limit = -1.5
-default_gate_stop = 3.0
-gate_stop_limit = 3.5
-scan_gate_step = 0.1
-main_gate_step = 0.025
-default_Vdlin = 0.05
-default_Vdsat = 1.0
-default_Vdlin1 = 0.05
-default_Vdlin2 = 0.1
-default_Vdsat1 = 1.0
-default_Vdsat2 = 2.0
-W = 10e3 # in nm
-save_dir = os.path.join("saved_data", "medium_roughness_in2o3_pt_fet")
-drain_start = 0
-drain_stop = 1.0
-drain_step = 0.025
-Vov_list = [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
+
+_gv   = _cfg['gate_voltage']
+_dv   = _cfg['drain_voltage']
+_meas = _cfg['measurement']
+_inst = _cfg.get('instrument', {})
+
+default_gate_start = _gv['default_start']
+gate_start_limit   = _gv['start_limit']
+default_gate_stop  = _gv['default_stop']
+gate_stop_limit    = _gv['stop_limit']
+scan_gate_step     = _gv['scan_step']
+main_gate_step     = _gv['main_step']
+
+default_Vdlin   = _dv['Vdlin']
+default_Vdsat   = _dv['Vdsat']
+IdVg_drain_list = _dv['IdVg_drain_list']
+drain_start     = _dv['IdVd_sweep_start']
+drain_stop      = _dv['IdVd_sweep_stop']
+drain_step      = _dv['IdVd_sweep_step']
+Vov_list        = _dv['Vov_list']
+
+W        = _cfg['device']['W_nm']
+save_dir = _cfg['save_dir']
+
+num_cycles_IdVg = _meas['IdVg_cycles']
+num_cycles_IdVd = _meas['IdVd_cycles']
+
+Irange = _inst.get('Irange', '1 nA limited auto ranging')
+Vrange = _inst.get('Vrange', '2 V limited auto ranging')
+
 cycle_colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
 
 def measure_initial_scan(gate_start=default_gate_start, gate_stop=default_gate_stop, gate_step=scan_gate_step, L=None, data_all=None, descriptor=None):
@@ -53,7 +77,7 @@ def measure_initial_scan(gate_start=default_gate_start, gate_stop=default_gate_s
     else:
         if myb1500 is None or smu_gate is None or smu_drain is None or smu_source is None:
             raise Exception("B1500 and SMUs must be initialized before calling measure_initial_scan in non-debug mode.")
-        
+
         # Initial Id-Vg scan to check if device is working / measuring VT
         data = IdVg_single_Vd(
             b1500=myb1500,
@@ -64,8 +88,8 @@ def measure_initial_scan(gate_start=default_gate_start, gate_stop=default_gate_s
             gate_stop=gate_stop,
             gate_step=gate_step,
             drain_voltage=default_Vdlin,
-            Irange='1 nA limited auto ranging',
-            Vrange='2 V limited auto ranging'
+            Irange=Irange,
+            Vrange=Vrange
         )
 
         # Plot Id-Vg curve
@@ -105,7 +129,7 @@ def measure_initial_scan(gate_start=default_gate_start, gate_stop=default_gate_s
         print("Failed to extract Vt, device may be faulty.")
         skip_device_flag = True
         return skip_device_flag, new_gate_start, new_gate_stop, Vt_lin
-    
+
     if Vt_lin < -2 or Vt_lin > 1.5:
         print("Extracted Vt is out of expected range (-2 V to 1.5 V), device may be faulty.")
         skip_device_flag = True
@@ -180,7 +204,7 @@ def measure_initial_scan_v2(gate_start=default_gate_start, gate_stop=default_gat
     else:
         if myb1500 is None or smu_gate is None or smu_drain is None or smu_source is None:
             raise Exception("B1500 and SMUs must be initialized before calling measure_initial_scan in non-debug mode.")
-        
+
         # Initial Id-Vg scan to check if device is working / measuring VT
         data = IdVg_single_Vd(
             b1500=myb1500,
@@ -191,8 +215,8 @@ def measure_initial_scan_v2(gate_start=default_gate_start, gate_stop=default_gat
             gate_stop=gate_stop,
             gate_step=gate_step,
             drain_voltage=default_Vdsat,
-            Irange='1 nA limited auto ranging',
-            Vrange='2 V limited auto ranging'
+            Irange=Irange,
+            Vrange=Vrange
         )
 
         # Plot Id-Vg curve
@@ -232,7 +256,7 @@ def measure_initial_scan_v2(gate_start=default_gate_start, gate_stop=default_gat
         print("Failed to extract Vt, device may be faulty.")
         skip_device_flag = True
         return skip_device_flag, new_gate_start, new_gate_stop, Vt_sat
-    
+
     if Vt_sat < -3.5 or Vt_sat > 2:
         print("Extracted Vt is out of expected range (-3.5 V to 2 V), device may be faulty.")
         skip_device_flag = True
@@ -292,10 +316,10 @@ def measure_main_IdVg(gate_start, gate_stop, gate_step, descriptor=None):
         gate_start=gate_start,
         gate_stop=gate_stop,
         gate_step=gate_step,
-        drain_list=[default_Vdlin1, default_Vdsat1],
-        num_cycles=2,
-        Irange='1 nA limited auto ranging',
-        Vrange='2 V limited auto ranging'
+        drain_list=IdVg_drain_list,
+        num_cycles=num_cycles_IdVg,
+        Irange=Irange,
+        Vrange=Vrange
     )
 
     # Plot Id-Vg curves for different drain voltages
@@ -351,9 +375,9 @@ def measure_main_IdVd(Vt_lin, descriptor=None):
         drain_start=drain_start,
         drain_stop=drain_stop,
         drain_step=drain_step,
-        num_cycles=1,
-        Irange='1 nA limited auto ranging',
-        Vrange='2 V limited auto ranging'
+        num_cycles=num_cycles_IdVd,
+        Irange=Irange,
+        Vrange=Vrange
     )
 
     # Plot Id-Vd curves for different gate voltages
@@ -414,24 +438,21 @@ def measure_all_v2(L, descriptor=None):
 #     rm.close()
 
 def main():
-    start_DieR_idx = 0 # 0 = bottom-most row 
-    start_DieC_idx = 0 # 0 = left-most column
-    start_dev_x_idx = 0 # 0 = left-most device in the cluster of 4 devices per row
-    start_dev_y_idx = 0 # 0 = top-most device in the cluster of 5 devices per column
-
-    dev_x_pitch = 250
-    dev_y_pitch = -250
-    dev_x_list = ['A', 'B', 'C', 'D']
-    dev_y_list = [0, 1, 2, 3, 4]
-
-    assert len(dev_x_list) == 4, "dev_x_list must have 4 entries corresponding to 4 devices per row."
-    assert len(dev_y_list) == 5, "dev_y_list must have 5 entries corresponding to 5 devices per column."
-    DieR_idx_list = [start_DieR_idx]
-    DieC_idx_list = [start_DieC_idx]
-    die_x_pitch = 8000
-    die_y_pitch = 8000
-
-    skip_combinations = []
+    layout = _cfg['wafer_layout']
+    start_DieR_idx  = layout['start_DieR_idx']
+    start_DieC_idx  = layout['start_DieC_idx']
+    start_dev_x_idx = layout['start_dev_x_idx']
+    start_dev_y_idx = layout['start_dev_y_idx']
+    dev_x_pitch     = layout['dev_x_pitch']
+    dev_y_pitch     = layout['dev_y_pitch']
+    dev_x_list      = layout['dev_x_list']
+    dev_y_list      = layout['dev_y_list']
+    DieR_idx_list   = layout['DieR_idx_list']
+    DieC_idx_list   = layout['DieC_idx_list']
+    die_x_pitch     = layout['die_x_pitch']
+    die_y_pitch     = layout['die_y_pitch']
+    L               = layout['L']
+    skip_combinations = [tuple(c) for c in layout.get('skip_combinations', [])]
 
     current_x_displace_from_origin = 0
     current_y_displace_from_origin = 0
@@ -459,9 +480,9 @@ def main():
                                             print(f"Data for Die Row={DieR_idx}, Column={DieC_idx}, devX={dev_x}, devY={dev_y} already exists, skipping measurement.")
                                             measured_previously = True
                                             break
-                            
+
                             if measured_previously:
-                                    continue                                       
+                                    continue
 
                             print(f"Moving to Die Row={DieR_idx}, Column={DieC_idx}, devX={dev_x}, devY={dev_y}...")
                             reqd_x_displace_from_origin = die_x_pitch * (DieC_idx-start_DieC_idx) + dev_x_pitch * (dev_x_idx-start_dev_x_idx)
@@ -472,12 +493,11 @@ def main():
                             print(f"Measuring device with devX={dev_x}, devY={dev_y}, DieR={DieR_idx}, DieC={DieC_idx} at position X={current_x_displace_from_origin} um, Y={current_y_displace_from_origin} um")
                             # time.sleep(2)
                             move_contact_height(prober=prober)
-                            measure_all_v2(L=5000, descriptor=descriptor)
+                            measure_all_v2(L=L, descriptor=descriptor)
                             move_separation_height(prober=prober)
                             # time.sleep(2)
 
 if __name__ == "__main__":
     main()
     prober.close()
-    rm.close()                     
-
+    rm.close()

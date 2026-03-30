@@ -10,6 +10,28 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 def channel(smu_id):
+    """
+    Return the single-letter channel identifier used in B1500A FMT 21 ASCII output.
+
+    The B1500A encodes each measurement channel as a letter in its raw data string
+    (C = slot 1, D = slot 2, E = slot 3, F = slot 4).  This helper maps an SMU
+    object back to that letter so parsed DataFrame columns can be addressed correctly.
+
+    Parameters
+    ----------
+    smu_id : SMU instance
+        One of b1500.smu1 through b1500.smu4.
+
+    Returns
+    -------
+    str
+        Single uppercase letter ('C', 'D', 'E', or 'F').
+
+    Raises
+    ------
+    ValueError
+        If smu_id does not match any of the four expected SMU slots.
+    """
     if smu_id == b1500.smu1:
         return 'C'
     elif smu_id == b1500.smu2:
