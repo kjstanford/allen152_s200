@@ -1,3 +1,73 @@
+"""
+3-Terminal FET Measurement Script
+==================================
+Runs automated Id-Vg and Id-Vd IV sweeps on a Keysight B1500A via a Cascade S200 probe station.
+
+Usage
+-----
+    python main_3terminal_fet_v1.py --config <path_to_config.json>
+
+Example
+-------
+    python main_3terminal_fet_v1.py --config configs/main_3terminal_fet_v1_config.json
+
+Config File Parameters (JSON)
+------------------------------
+Top-level:
+    mode        str   Execution mode: "save" (measure + save), "nosave" (measure only), "debug" (skip hardware)
+    save_dir    str   Output directory for CSV and PNG files (e.g. "saved_data/my_run")
+
+instrument:
+    Irange      str   Current measurement range passed to B1500A SMUs (e.g. "1 nA limited auto ranging")
+    Vrange      str   Voltage measurement range passed to B1500A SMUs (e.g. "2 V limited auto ranging")
+
+device:
+    W_nm        float Channel width in nm (used for normalised Vt extraction, e.g. 10000)
+
+gate_voltage:
+    default_start   float   Initial gate sweep start in V (e.g. -3.0)
+    start_limit     float   Hard lower bound on gate start; device is skipped if this would be exceeded (e.g. -3.5)
+    default_stop    float   Gate sweep stop in V (e.g. 3.0)
+    stop_limit      float   Hard upper bound on gate stop (e.g. 3.5)
+    scan_step       float   Step size for the quick initial scan in V (e.g. 0.1)
+    main_step       float   Step size for the main high-resolution sweep in V (e.g. 0.025)
+
+drain_voltage:
+    Vdlin           float         Drain bias used in initial linear-region scan (e.g. 0.05)
+    Vdsat           float         Drain bias used in initial saturation-region scan (e.g. 1.0)
+    IdVg_drain_list list[float]   Drain voltages swept during main Id-Vg measurement (e.g. [0.05, 1.0])
+    IdVd_sweep_start float        Drain sweep start for Id-Vd measurement in V (e.g. 0.0)
+    IdVd_sweep_stop  float        Drain sweep stop for Id-Vd measurement in V (e.g. 1.0)
+    IdVd_sweep_step  float        Drain sweep step size in V (e.g. 0.025)
+    Vov_list        list[float]   Gate overdrive voltages (Vov = Vg - Vt) for Id-Vd gate bias list (e.g. [1.0, 1.25, ...])
+
+measurement:
+    IdVg_cycles     int   Number of repeated Id-Vg sweep cycles (e.g. 2)
+    IdVd_cycles     int   Number of repeated Id-Vd sweep cycles (e.g. 1)
+
+wafer_layout:
+    start_DieR_idx  int           Die row index to start from (0-indexed from bottom)
+    start_DieC_idx  int           Die column index to start from (0-indexed from left)
+    start_LcR_idx   int           Contact-length cluster row index to start from
+    start_LcC_idx   int           Contact-length cluster column index to start from
+    DieR_idx_list   list[int]     Die rows to measure
+    DieC_idx_list   list[int]     Die columns to measure
+    die_x_pitch     float         Die centre-to-centre pitch in X in microns
+    die_y_pitch     float         Die centre-to-centre pitch in Y in microns
+    Lc_list         list[list]    2D array of contact lengths in nm indexed [LcR][LcC]
+    LcR_idx_list    list[int]     Lc cluster row indices to iterate over
+    LcC_idx_list    list[int]     Lc cluster column indices to iterate over
+    Lc_x_pitch      float         Lc cluster centre-to-centre pitch in X in microns
+    Lc_y_pitch      float         Lc cluster centre-to-centre pitch in Y in microns
+    dev_code_list   list[str]     Device letter codes within each L row (e.g. ["A","B",...,"L"])
+    L_list          list[int]     Channel lengths in nm to measure (e.g. [60, 80, ..., 2000])
+    L_skip_list     list[int]     Channel lengths to skip entirely (e.g. [1000, 2000])
+    dev_x_pitch     float         Device-to-device pitch in X within an L row in microns
+    dev_y_pitch     float         Device-to-device pitch in Y between L rows in microns (negative = move up)
+    reverse_L       bool          If true, iterate L_list in reverse and flip dev_y_pitch sign
+    skip_combinations list        List of (DieR, DieC, LcR, LcC, L_idx, dev_code) tuples to skip
+"""
+
 import argparse
 import json
 import os
