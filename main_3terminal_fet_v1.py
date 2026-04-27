@@ -33,7 +33,7 @@ default_Vdlin2 = 0.1
 default_Vdsat1 = 1.0
 default_Vdsat2 = 2.0
 W = 10e3 # in nm
-save_dir = os.path.join("saved_data", "medium_roughness_in2o3_pt_fet")
+save_dir = os.path.join("saved_data", "In2O3_2.3nm_L4um_sample4(ito)_top")
 drain_start = 0
 drain_stop = 1.0
 drain_step = 0.025
@@ -397,14 +397,15 @@ def measure_all(L, descriptor=None):
         measure_main_IdVg(gate_start=new_gate_start, gate_stop=new_gate_stop, gate_step=main_gate_step, descriptor=descriptor)
         # measure_main_IdVd(Vt_lin=Vt_lin)
 
-def measure_all_v2(L, descriptor=None):
+def measure_all_v2(L, main_measure=True, descriptor=None):
     skip_device_flag, new_gate_start, new_gate_stop, Vt_sat = measure_initial_scan_v2(L=L, descriptor=descriptor)
     if skip_device_flag:
         print("SKIPPING DEVICE BASED ON INITIAL SCAN EVALUATION.....\n")
     else:
         print("DEVICE PASSED INITIAL SCAN EVALUATION.")
-        print(f"Proceeding with main measurement sequence with gate voltage range {new_gate_start} V to {new_gate_stop} V and Vt_sat = {Vt_sat} V\n")
-        measure_main_IdVg(gate_start=new_gate_start, gate_stop=new_gate_stop, gate_step=main_gate_step, descriptor=descriptor)
+        if main_measure:
+            print(f"Proceeding with main measurement sequence with gate voltage range {new_gate_start} V to {new_gate_stop} V and Vt_sat = {Vt_sat} V\n")
+            measure_main_IdVg(gate_start=new_gate_start, gate_stop=new_gate_stop, gate_step=main_gate_step, descriptor=descriptor)
 
 # if __name__ == "__main__"
 #     move_contact_height(prober=prober)
@@ -416,22 +417,23 @@ def measure_all_v2(L, descriptor=None):
 def main():
     start_DieR_idx = 0 # 0 = bottom-most row 
     start_DieC_idx = 0 # 0 = left-most column
-    start_dev_x_idx = 0 # 0 = left-most device in the cluster of 4 devices per row
-    start_dev_y_idx = 0 # 0 = top-most device in the cluster of 5 devices per column
+    start_dev_x_idx = 0 # 0 = right-most device in the cluster of 5 devices per row
+    start_dev_y_idx = 2 # 0 = top-most device in the cluster of 4 devices per column
 
-    dev_x_pitch = 250
-    dev_y_pitch = -250
-    dev_x_list = ['A', 'B', 'C', 'D']
-    dev_y_list = [0, 1, 2, 3, 4]
+    dev_x_pitch = -230
+    dev_y_pitch = -210
+    dev_x_list = ['A', 'B', 'C', 'D', 'E']
+    dev_y_list = [0, 1, 2, 3]
 
-    assert len(dev_x_list) == 4, "dev_x_list must have 4 entries corresponding to 4 devices per row."
-    assert len(dev_y_list) == 5, "dev_y_list must have 5 entries corresponding to 5 devices per column."
+    assert len(dev_x_list) == 5, "dev_x_list must have 5 entries corresponding to 5 devices per row."
+    assert len(dev_y_list) == 4, "dev_y_list must have 4 entries corresponding to 4 devices per column."
     DieR_idx_list = [start_DieR_idx]
     DieC_idx_list = [start_DieC_idx]
     die_x_pitch = 8000
     die_y_pitch = 8000
 
-    skip_combinations = []
+    skip_combinations = [(0, 0, 0, 0), (0, 0, 0, 1)]
+    #skip_combinations = []
 
     current_x_displace_from_origin = 0
     current_y_displace_from_origin = 0
@@ -472,7 +474,7 @@ def main():
                             print(f"Measuring device with devX={dev_x}, devY={dev_y}, DieR={DieR_idx}, DieC={DieC_idx} at position X={current_x_displace_from_origin} um, Y={current_y_displace_from_origin} um")
                             # time.sleep(2)
                             move_contact_height(prober=prober)
-                            measure_all_v2(L=5000, descriptor=descriptor)
+                            measure_all_v2(L=5000, main_measure=False, descriptor=descriptor)
                             move_separation_height(prober=prober)
                             # time.sleep(2)
 
