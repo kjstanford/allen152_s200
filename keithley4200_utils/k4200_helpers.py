@@ -335,18 +335,24 @@ def idvd_sweep_smu(my4200, vgs_start, vgs_stop, vgs_step, vds_start, vds_stop, v
 #     my4200.write("DE")
 #     # print(my4200.query("GD BeepLib BeepCharge"))
 
-def pmu_segarb_examplefull(my4200):
+def list_to_semicolon_str_V(num_list):
+    return '; '.join([f"{x:.3f}" for x in num_list])
+
+def list_to_semicolon_str_t(num_list):
+    return '; '.join([f"{x:f}" for x in num_list])
+
+def list_to_semicolon_str_int(num_list):
+    return '; '.join([f"{x:d}" for x in num_list])
+
+def pmu_segarb_example(my4200, VRangeCh1=10, IRangeCh1=0.01, VRangeCh2=10, IRangeCh2=0.01, NumWaveforms=1, DUTResCh1=1e6, DUTResCh2=1e6, MaxSheetPoints=5000, SegTime=[], StartVCh1=[], StopVCh1=[], StartVCh2=[], StopVCh2=[], SSRCtrlCh1=[], SSRCtrlCh2=[], SegTrigOut=[], SMU_V=0, SMU_Irange=0.01, SMU_Icomp=0.01, SMU_ID="NONE", PMU_ID="PMU1", Output_size=10000):
     # Clear all readings from buffer
     my4200.write("BC")
 
     my4200.write("UL")
-    my4200.write("EX PMU_examples_ulib PMU_SegArb_ExampleFull()")
-    # Enable service request for data ready on buffer 1
-    my4200.write('DR1')
-    # Selects measurement control page
-    my4200.write("MD")
+    my4200.write(f"EX PMU_examples_ulib PMU_SegArb_Example({VRangeCh1}, {IRangeCh1}, {VRangeCh2}, {IRangeCh2}, {NumWaveforms}, {DUTResCh1}, {DUTResCh2}, {MaxSheetPoints}, {len(SegTime)}, {list_to_semicolon_str_t(SegTime)}, {len(SegTime)}, {list_to_semicolon_str_V(StartVCh1)}, {len(StartVCh1)}, {list_to_semicolon_str_V(StopVCh1)}, {len(StopVCh1)}, {list_to_semicolon_str_V(StartVCh2)}, {len(StartVCh2)}, {list_to_semicolon_str_V(StopVCh2)}, {len(StopVCh2)}, {list_to_semicolon_str_int(SSRCtrlCh1)}, {len(SSRCtrlCh1)}, {list_to_semicolon_str_int(SSRCtrlCh2)}, {len(SSRCtrlCh2)}, {list_to_semicolon_str_int(SegTrigOut)}, {len(SegTrigOut)}, {SMU_V}, {SMU_Irange}, {SMU_Icomp},{SMU_ID},{PMU_ID}, , {Output_size}, , {Output_size}, , {Output_size}, , {Output_size}, , {Output_size}, , {Output_size}, , {Output_size})")
+    print(f"EX PMU_examples_ulib PMU_SegArb_Example({VRangeCh1}, {IRangeCh1}, {VRangeCh2}, {IRangeCh2}, {NumWaveforms}, {DUTResCh1}, {DUTResCh2}, {MaxSheetPoints}, {len(SegTime)}, {list_to_semicolon_str_t(SegTime)}, {len(SegTime)}, {list_to_semicolon_str_V(StartVCh1)}, {len(StartVCh1)}, {list_to_semicolon_str_V(StopVCh1)}, {len(StopVCh1)}, {list_to_semicolon_str_V(StartVCh2)}, {len(StartVCh2)}, {list_to_semicolon_str_V(StopVCh2)}, {len(StopVCh2)}, {list_to_semicolon_str_int(SSRCtrlCh1)}, {len(SSRCtrlCh1)}, {list_to_semicolon_str_int(SSRCtrlCh2)}, {len(SSRCtrlCh2)}, {list_to_semicolon_str_int(SegTrigOut)}, {len(SegTrigOut)}, {SMU_V}, {SMU_Irange}, {SMU_Icomp},{SMU_ID},{PMU_ID}, , {Output_size}, , {Output_size}, , {Output_size}, , {Output_size}, , {Output_size}, , {Output_size}, , {Output_size})")
     # Runs a single trigger test and stores readings in cleared buffer 1
-    print("Executing PMU_SegArb_ExampleFull test...")
+    print("Executing PMU_SegArb_ExampleFull module from PMU_examples_ulib library...")
     my4200.write("ME1")
     wait_for_stb(my4200)
 
@@ -354,7 +360,24 @@ def pmu_segarb_examplefull(my4200):
     return_data = my4200.query("DO") # Requests the stored data from Buffer 1
     print(f"Return Value: {return_data}")
 
-def keithley_beep_BeepLib(my4200, freq=2000, duration=0.5):
+    VMeasCh1_data = my4200.query(f"GN VMeasCh1 {Output_size}")
+    IMeasCh1_data = my4200.query(f"GN IMeasCh1 {Output_size}")
+    VMeasCh2_data = my4200.query(f"GN VMeasCh2 {Output_size}")
+    IMeasCh2_data = my4200.query(f"GN IMeasCh2 {Output_size}")
+    TimeOutput_data = my4200.query(f"GN TimeOutput {Output_size}")
+    StatusCh1_data = my4200.query(f"GN StatusCh1 {Output_size}")
+    StatusCh2_data = my4200.query(f"GN StatusCh2 {Output_size}")
+    print(f"VMeasCh1 Data: {VMeasCh1_data}")
+    print(f"IMeasCh1 Data: {IMeasCh1_data}")
+    print(f"VMeasCh2 Data: {VMeasCh2_data}")
+    print(f"IMeasCh2 Data: {IMeasCh2_data}")
+    print(f"TimeOutput Data: {TimeOutput_data}")
+    print(f"StatusCh1 Data: {StatusCh1_data}")
+    print(f"StatusCh2 Data: {StatusCh2_data}")
+    df = parse_semicolon_data_to_df(VMeasCh1=VMeasCh1_data, IMeasCh1=IMeasCh1_data, VMeasCh2=VMeasCh2_data, IMeasCh2=IMeasCh2_data, TimeOutput=TimeOutput_data, StatusCh1=StatusCh1_data, StatusCh2=StatusCh2_data)
+    return df
+
+def keithley_beep_BeepLib(my4200, freq=2000, duration=500):
     my4200.write("UL")
     my4200.write(f"EX BeepLib beep({freq}, {duration})")
     wait_for_stb(my4200)
@@ -362,18 +385,14 @@ def keithley_beep_BeepLib(my4200, freq=2000, duration=0.5):
     print(f"Beep Data: {data}")
 
 def keithley_nvm_dcSweep(my4200, SMU_low="SMU1", SMU_high="SMU2", compCH=1, measCH=2, irange=0.0, ilimit=0.0, stepTime=0.0, widthTime=0.001, vamp=1, vamp_pts=300, vforce_pts=300, imeasd_pts=300, timed_pts=300):
+    # Clear all readings from buffer
+    my4200.write("BC")
+
     my4200.write("UL")
-    my4200.write(f"EX nvm dcSweep({SMU_low},{SMU_high}, {compCH}, {measCH}, {irange}, {ilimit}, {stepTime}, {widthTime}, {vamp}, {vamp_pts}, , {vforce_pts}, , {imeasd_pts}, , {timed_pts})")
-    # Enable service request for data ready on buffer 1
-    my4200.write('DR1')
-    # Selects measurement control page
-    my4200.write("MD")
-    # Runs a single trigger test and stores readings in cleared buffer 1
-    print("Executing dcSweep module from nvm library...")
-    my4200.write("ME1")
+    return_data = my4200.write(f"EX nvm dcSweep({SMU_low},{SMU_high}, {compCH}, {measCH}, {irange}, {ilimit}, {stepTime}, {widthTime}, {vamp}, {vamp_pts}, , {vforce_pts}, , {imeasd_pts}, , {timed_pts})")
+    print(f"EX nvm dcSweep({SMU_low},{SMU_high}, {compCH}, {measCH}, {irange}, {ilimit}, {stepTime}, {widthTime}, {vamp}, {vamp_pts}, , {vforce_pts}, , {imeasd_pts}, , {timed_pts})")
     wait_for_stb(my4200)
     # After wait_for_stb returns:
-    return_data = my4200.query("DO") # Requests the stored data from Buffer 1
     print(f"Return Value: {return_data}")
     vforce_data = my4200.query(f"GN vforce {vforce_pts}")
     imeasd_data = my4200.query(f"GN imeasd {imeasd_pts}")
