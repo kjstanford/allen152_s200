@@ -60,7 +60,7 @@ def wait_for_stb(my4200, delay=1):
     while True:
         status = my4200.read_stb()
         print(f"Status byte: {status}")
-        if status == 0:  # Check if all bits are zero
+        if status == 0 or status == 1:  # Check if all bits are zero
             print("Data ready")
             break
         else:
@@ -378,6 +378,8 @@ def pmu_segarb_example(my4200, VRangeCh1=10, IRangeCh1=0.01, VRangeCh2=10, IRang
     return df
 
 def keithley_beep_BeepLib(my4200, freq=2000, duration=500):
+    # Clear all readings from buffer
+    my4200.write("BC")
     my4200.write("UL")
     my4200.write(f"EX BeepLib beep({freq}, {duration})")
     wait_for_stb(my4200)

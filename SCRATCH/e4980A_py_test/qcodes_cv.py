@@ -21,7 +21,7 @@ settings = {
     'measurement_function': 'CPRP',  # Corresponds to KeysightE4980AMeasurements.CPRP
     'ac_voltage_level': 0.03,
     'dc_bias_enabled': True,
-    'start_volt': -2,
+    'start_volt': -3.5,
     'stop_volt': 2,
     'sweep_mode': 'double',  # 'single' or 'double'
     'num_points': 21,

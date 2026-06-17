@@ -20,10 +20,10 @@ myb1500 = b1500
 smu_gate = b1500.smu3
 smu_drain = b1500.smu2
 smu_source = b1500.smu4
-default_gate_start = -1.0
-gate_start_limit = -1.5
-default_gate_stop = 3.0
-gate_stop_limit = 3.5
+default_gate_start = -2.0
+gate_start_limit = -3.0
+default_gate_stop = 2.0
+gate_stop_limit = 2.5
 scan_gate_step = 0.1
 main_gate_step = 0.025
 default_Vdlin = 0.05
@@ -33,7 +33,7 @@ default_Vdlin2 = 0.1
 default_Vdsat1 = 1.0
 default_Vdsat2 = 2.0
 W = 10e3 # in nm
-save_dir = os.path.join("saved_data", "In2O3_2.3nm_L4um_sample4(ito)_top")
+save_dir = os.path.join("saved_data", "JK_SDC_PDRTA_600C_Lc500") #JK_SDC_baseline_noRTA_Lc500
 drain_start = 0
 drain_stop = 1.0
 drain_step = 0.025
@@ -197,9 +197,13 @@ def measure_initial_scan_v2(gate_start=default_gate_start, gate_stop=default_gat
 
         # Plot Id-Vg curve
         plt.figure(figsize=(8, 6))
-        plt.semilogy(data['Gate_Voltage'].to_numpy(), np.abs(data['Drain_Current'].to_numpy()), label=f'Vd = {default_Vdsat} V')
+        # plt.semilogy(data['Gate_Voltage'].to_numpy(), np.abs(data['Drain_Current'].to_numpy()), label=f'Vd = {default_Vdsat} V')
+        plt.semilogy(data['Gate_Voltage'].to_numpy(), np.abs(data['Drain_Current'].to_numpy()), label=f'Drain Current')
+        plt.semilogy(data['Gate_Voltage'].to_numpy(), np.abs(data['Gate_Current'].to_numpy()), label=f'Gate Current')
+        plt.semilogy(data['Gate_Voltage'].to_numpy(), np.abs(data['Source_Current'].to_numpy()), label=f'Source Current')
         plt.xlabel('Gate Voltage (V)')
-        plt.ylabel('Drain Current (A)')
+        # plt.ylabel('Drain Current (A)')
+        plt.ylabel('Current (A)')
         plt.title(f'Initial Id-Vg Scan at Vd = {default_Vdsat} V')
         plt.legend()
         plt.grid(True)
@@ -304,7 +308,10 @@ def measure_main_IdVg(gate_start, gate_stop, gate_step, descriptor=None):
         cycle_data = data[data['Cycle'] == cycle]
         for Vd in cycle_data['Drain_Voltage'].unique():
             Vd_data = cycle_data[cycle_data['Drain_Voltage'] == Vd]
-            plt.semilogy(Vd_data['Gate_Voltage'].to_numpy(), np.abs(Vd_data['Drain_Current'].to_numpy()), label=f'Vd = {Vd} V', color=cycle_colors[(cycle-1) % len(cycle_colors)])
+            # plt.semilogy(Vd_data['Gate_Voltage'].to_numpy(), np.abs(Vd_data['Drain_Current'].to_numpy()), label=f'Vd = {Vd} V', color=cycle_colors[(cycle-1) % len(cycle_colors)])
+            plt.semilogy(data['Gate_Voltage'].to_numpy(), np.abs(data['Drain_Current'].to_numpy()), label=f'Drain Current', color=cycle_colors[(cycle-1) % len(cycle_colors)], linestyle='-' if Vd == default_Vdlin1 else '--')
+            plt.semilogy(data['Gate_Voltage'].to_numpy(), np.abs(data['Gate_Current'].to_numpy()), label=f'Gate Current', color=cycle_colors[(cycle-1) % len(cycle_colors)], linestyle='-' if Vd == default_Vdlin1 else '--')
+            plt.semilogy(data['Gate_Voltage'].to_numpy(), np.abs(data['Source_Current'].to_numpy()), label=f'Source Current', color=cycle_colors[(cycle-1) % len(cycle_colors)], linestyle='-' if Vd == default_Vdlin1 else '--')
     plt.xlabel('Gate Voltage (V)')
     plt.ylabel('Drain Current (A)')
     plt.title('Id-Vg Curves for Different Drain Voltages')
@@ -407,33 +414,38 @@ def measure_all_v2(L, main_measure=True, descriptor=None):
             print(f"Proceeding with main measurement sequence with gate voltage range {new_gate_start} V to {new_gate_stop} V and Vt_sat = {Vt_sat} V\n")
             measure_main_IdVg(gate_start=new_gate_start, gate_stop=new_gate_stop, gate_step=main_gate_step, descriptor=descriptor)
 
-# if __name__ == "__main__"
+# if __name__ == "__main__":
 #     move_contact_height(prober=prober)
-#     measure_all(L=40)
+#     measure_all_v2(L=2000, main_measure=False, descriptor="L5W10D02_quick_test")
 #     move_separation_height(prober=prober)
 #     prober.close()
 #     rm.close()
 
 def main():
-    start_DieR_idx = 0 # 0 = bottom-most row 
-    start_DieC_idx = 0 # 0 = left-most column
-    start_dev_x_idx = 0 # 0 = right-most device in the cluster of 5 devices per row
-    start_dev_y_idx = 2 # 0 = top-most device in the cluster of 4 devices per column
+    start_DieR_idx = 1 # 0 = bottom-most row 
+    start_DieC_idx = 1 # 0 = left-most column
+    start_dev_x_idx = 0 # 0 = left-most device in the cluster of 12 devices per row
+    start_dev_y_idx = 0 # 0 = bottom-most device in the cluster of 13 devices per column
 
-    dev_x_pitch = -230
-    dev_y_pitch = -210
-    dev_x_list = ['A', 'B', 'C', 'D', 'E']
-    dev_y_list = [0, 1, 2, 3]
+    dev_x_pitch = 200
+    dev_y_pitch = 200
+    dev_x_list = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
+    # dev_x_list = ['A']
+    # dev_L_list = [0.04, 0.06, 0.08, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.7, 1.0, 2.0] # in um
+    # dev_L_list = [0.06, 0.08, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.7, 1.0, 2.0] # in um
+    dev_L_list = [0.15] # in um
+    # dev_L_list.reverse()
+    dev_y_list = range(len(dev_L_list))
 
-    assert len(dev_x_list) == 5, "dev_x_list must have 5 entries corresponding to 5 devices per row."
-    assert len(dev_y_list) == 4, "dev_y_list must have 4 entries corresponding to 4 devices per column."
+    assert len(dev_x_list) == 12, "dev_x_list must have 12 entries corresponding to 12 devices per row."
+    assert len(dev_y_list) == len(dev_L_list), "dev_y_list must have the same number of entries as dev_L_list."
     DieR_idx_list = [start_DieR_idx]
     DieC_idx_list = [start_DieC_idx]
     die_x_pitch = 8000
     die_y_pitch = 8000
 
-    skip_combinations = [(0, 0, 0, 0), (0, 0, 0, 1)]
-    #skip_combinations = []
+    # skip_combinations = [(1, 1, 0, 4)]
+    skip_combinations = []
 
     current_x_displace_from_origin = 0
     current_y_displace_from_origin = 0
@@ -442,14 +454,16 @@ def main():
 
     for DieR_idx in DieR_idx_list:
         for DieC_idx in DieC_idx_list:
-                for dev_x_idx, dev_x in enumerate(dev_x_list):
-                    for dev_y_idx, dev_y in enumerate(dev_y_list):
+                # for dev_x_idx, dev_x in enumerate(dev_x_list):
+                #     for dev_y_idx, dev_y in enumerate(dev_y_list):
+                for dev_y_idx, dev_y in enumerate(dev_y_list):
+                    for dev_x_idx, dev_x in enumerate(dev_x_list):
                             measured_previously = False
-                            descriptor = f"DieR{DieR_idx}_DieC{DieC_idx}_devX{dev_x}_devY{dev_y}"
+                            descriptor = f"DieR{DieR_idx}_DieC{DieC_idx}_devX{dev_x}_devL{dev_L_list[dev_y_idx]*1000:.0f}nm"
                             print(f"\nProcessing device with descriptor: {descriptor}")
 
                             if (DieR_idx, DieC_idx, dev_x_idx, dev_y_idx) in skip_combinations:
-                                print(f"Skipping Die Row={DieR_idx}, Column={DieC_idx}, devX={dev_x}, devY={dev_y} as per skip list.")
+                                print(f"Skipping Die Row={DieR_idx}, Column={DieC_idx}, devX={dev_x}, devL={dev_L_list[dev_y_idx]*1000:.0f}nm as per skip list.")
                                 continue
                             # Walk through the directory and subdirectories
                             for root, dirs, files in os.walk(save_dir):
@@ -458,23 +472,23 @@ def main():
                                 for file in files:
                                     if file.endswith('.csv'): # and 'main' in file:
                                         if descriptor in file:
-                                            print(f"Data for Die Row={DieR_idx}, Column={DieC_idx}, devX={dev_x}, devY={dev_y} already exists, skipping measurement.")
+                                            print(f"Data for Die Row={DieR_idx}, Column={DieC_idx}, devX={dev_x}, devL={dev_L_list[dev_y_idx]*1000:.0f}nm already exists, skipping measurement.")
                                             measured_previously = True
                                             break
                             
-                            if measured_previously:
-                                    continue                                       
+                            # if measured_previously:
+                            #         continue                                       
 
-                            print(f"Moving to Die Row={DieR_idx}, Column={DieC_idx}, devX={dev_x}, devY={dev_y}...")
+                            print(f"Moving to Die Row={DieR_idx}, Column={DieC_idx}, devX={dev_x}, devL={dev_L_list[dev_y_idx]*1000:.0f}nm...")
                             reqd_x_displace_from_origin = die_x_pitch * (DieC_idx-start_DieC_idx) + dev_x_pitch * (dev_x_idx-start_dev_x_idx)
                             reqd_y_displace_from_origin = die_y_pitch * (DieR_idx-start_DieR_idx) + dev_y_pitch * (dev_y_idx-start_dev_y_idx)
                             move_relative(prober=prober, x_microns=reqd_x_displace_from_origin - current_x_displace_from_origin, y_microns=reqd_y_displace_from_origin - current_y_displace_from_origin)
                             current_x_displace_from_origin = reqd_x_displace_from_origin
                             current_y_displace_from_origin = reqd_y_displace_from_origin
-                            print(f"Measuring device with devX={dev_x}, devY={dev_y}, DieR={DieR_idx}, DieC={DieC_idx} at position X={current_x_displace_from_origin} um, Y={current_y_displace_from_origin} um")
+                            print(f"Measuring device with devX={dev_x}, devL={dev_L_list[dev_y_idx]*1000:.0f}nm, DieR={DieR_idx}, DieC={DieC_idx} at position X={current_x_displace_from_origin} um, Y={current_y_displace_from_origin} um")
                             # time.sleep(2)
                             move_contact_height(prober=prober)
-                            measure_all_v2(L=5000, main_measure=False, descriptor=descriptor)
+                            measure_all_v2(L=dev_L_list[dev_y_idx]*1000, main_measure=True, descriptor=descriptor)
                             move_separation_height(prober=prober)
                             # time.sleep(2)
 
