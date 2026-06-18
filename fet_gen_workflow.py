@@ -73,12 +73,18 @@ _args = _parse_args()
 with open(_args.config) as _f:
     _cfg = json.load(_f)
 
+_misc = _cfg.get('miscellaneous', {})
+_meas = _cfg.get('measurement', {})
+_sample = _cfg.get('sample', {})
+_dev_grp = _cfg.get('dev-group', {})
+
 # from data_processing_utils.IdVg_param_extract import *
-if _cfg.get('mode', 'debug') != 'debug':
+if _misc.get('mode', 'debug') != 'debug':
     from b1500A_utils.initialize_smus import *
     # from b1500A_utils.FET_three_terminal import *
     from S200_utils.initialize_s200 import *
     # from S200_utils.chuck_control import *
+
 # import numpy as np
 # import pandas as pd
 # import matplotlib.pyplot as plt
@@ -90,17 +96,13 @@ from main_utils.main_funs import *
 current_dir = os.getcwd()
 
 myb1500 = b1500
+myprober = prober
 smu_gate = b1500.smu3
 smu_drain = b1500.smu2
 smu_source = b1500.smu4
 
-_misc = _cfg.get('miscellaneous', {})
-_meas = _cfg.get('measurement', {})
-_sample = _cfg.get('sample', {})
-_dev_grp = _cfg.get('dev-group', {})
-
 if __name__ == '__main__':
-    main_multi_measure(_misc=_misc, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp)
+    main_multi_measure(_misc=_misc, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, myb1500=myb1500, smu_gate=smu_gate, smu_drain=smu_drain, smu_source=smu_source, prober=myprober)
     prober.close()
     rm.close()
 

@@ -126,7 +126,7 @@ def measure_main_IdVg(myb1500=None, smu_gate=None, smu_drain=None, smu_source=No
     print("Starting main Id-Vg measurement sequence...")
 
     gate_stop = configs.get('default_stop', 1.0)
-    gate_step = configs.get('scan_step', 0.1)
+    gate_step = configs.get('main_step', 0.05)
     Vdlin = configs.get('Vdlin', 0.05)
     Vdsat = configs.get('Vdsat', 1.5)
     num_cycles = configs.get('IdVg_cycles', 2)
@@ -206,8 +206,6 @@ def main_multi_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=None
     repeat_measurement = _misc.get('repeat_measurement', False)
 
     sample_name = _sample.get('sample_name', '')
-    W_um = _sample.get('W_um', 10.0)
-    L_um = _sample.get('L_um', 5.0)
     start_DieR_idx = _sample.get('start_DieR_idx', 0)
     start_DieC_idx = _sample.get('start_DieC_idx', 0)
     DieR_idx_list = _sample.get('DieR_idx_list', [0])
@@ -216,6 +214,8 @@ def main_multi_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=None
     die_y_pitch = _sample.get('die_y_pitch', 3600.0)
 
     dev_group_name = _dev_grp.get('dev_group_name', '')
+    W_um = _dev_grp.get('W_um', 100)
+    L_um = _dev_grp.get('L_um', 5)
     dev_x_name = _dev_grp.get('dev_x_name', '')
     dev_y_name = _dev_grp.get('dev_y_name', '')
     start_dev_x_idx = _dev_grp.get('start_dev_x_idx', 0)
@@ -251,7 +251,7 @@ def main_multi_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=None
                 for dev_y_idx in dev_y_idx_list:
                     print()
                     print("=================================================")
-                    descriptor = f"DieR_{DieR_idx}_DieC_{DieC_idx}_dev_xlabel_{dev_x_list[dev_x_idx]}_dev_ylabel_{dev_y_list[dev_y_idx]}"
+                    descriptor = f"DieR_{DieR_idx}_DieC_{DieC_idx}_{dev_x_name}_{dev_x_list[dev_x_idx]}_{dev_y_name}_{dev_y_list[dev_y_idx]}"
                     measured_previously = False
                     if (DieR_idx, DieC_idx, dev_x_idx, dev_y_idx) in skip_combinations:
                         print(f"Skipping device at DieR = {DieR_idx}, DieC = {DieC_idx}, dev_x = {dev_x_idx} with label {dev_x_list[dev_x_idx]}, dev_y = {dev_y_idx} with label {dev_y_list[dev_y_idx]}")
@@ -283,8 +283,8 @@ def main_multi_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=None
                     current_y_displace_from_origin = reqd_y_displace_from_origin
                     print(f"Current position: x = {current_x_displace_from_origin}, y = {current_y_displace_from_origin}")
                     
-                    W = _sample.get("W_um", 100) * 1e-6
-                    L = _sample.get("L_um", 5) * 1e-6
+                    W = W_um * 1e-6
+                    L = L_um * 1e-6
                     if dev_x_name == "Wch":
                         W = dev_x_list[dev_x_idx] * 1e-6
                     if dev_y_name == "Wch":
