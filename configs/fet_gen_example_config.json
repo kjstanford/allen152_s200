@@ -1,0 +1,51 @@
+{
+  "miscellaneous": {
+    "mode": "save",
+    "data_parent_dir": "saved_data/example_run",
+    "repeat_measurement": false
+  },
+  "measurement": {
+    "Irange": "1 nA limited auto ranging",
+    "Vrange": "2 V limited auto ranging",
+    "default_start": -3.0,
+    "start_limit": -3.5,
+    "default_stop": 3.0,
+    "stop_limit": 3.5,
+    "scan_step": 0.1,
+    "main_step": 0.025,
+    "Vdlin": 0.05,
+    "Vdsat": 1.5,
+    "IdVg_drain_list": [0.05, 1.5],
+    "IdVd_sweep_start": 0.0,
+    "IdVd_sweep_stop": 1.0,
+    "IdVd_sweep_step": 0.025,
+    "Vov_list": [1.0, 1.25, 1.5],
+    "IdVg_cycles": 2,
+    "IdVd_cycles": 1
+  },
+  "sample": {
+    "sample_name": "baseline_2nm_itofet",
+    "W_um": 100,
+    "L_um": 5,
+    "start_DieR_idx": 1,
+    "start_DieC_idx": 1,
+    "DieR_idx_list": [1, 2],
+    "DieC_idx_list": [1, 2],
+    "die_x_pitch": 8500.0,
+    "die_y_pitch": 3600.0
+  },
+  "dev-group": {
+    "dev_group_name": "L5um_series",
+    "dev_x_name": "Wch",
+    "dev_y_name": "ID",
+    "start_dev_x_idx": 0,
+    "start_dev_y_idx": 0,
+    "dev_x_idx_list": [0, 1, 2, 3, 4],
+    "dev_y_idx_list": [0, 1, 2, 3],
+    "dev_x_map": {"0": 4, "1": 8, "2": 10, "3": 12, "4": 20},
+    "dev_y_map": {"0": "A", "1": "B", "2": "C", "3": "D"},
+    "dev_x_pitch": 230.0,
+    "dev_y_pitch": 210.0,
+    "skip_combinations": []
+  }
+}

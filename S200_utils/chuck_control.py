@@ -1,5 +1,5 @@
 import time
-import pyvisa
+# import pyvisa
 
 def move_relative(prober=None, x_microns=0, y_microns=0):
     if prober is None:
