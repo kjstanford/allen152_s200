@@ -24,28 +24,28 @@
     "IdVd_cycles": 1,
     "start_freq": 1e3,
     "stop_freq": 1e6,
-    "num_freq_decade": 3
+    "num_freq_decade": 2
   },
   "sample": {
     "sample_name": "baseline_2nm_itofet",
-    "start_DieR_idx": 0,
+    "start_DieR_idx": 1,
     "start_DieC_idx": 0,
-    "DieR_idx_list": [0, 1, 2, 3],
-    "DieC_idx_list": [0, 1, 2],
+    "DieR_idx_list": [1],
+    "DieC_idx_list": [0],
     "die_x_pitch": 8500.0,
     "die_y_pitch": 3600.0
   },
   "dev-group": {
-    "dev_group_name": "L2um_W100um_series",
+    "dev_group_name": "L5um_W100um_series_v2",
     "W_um": 100,
-    "L_um": 2,
+    "L_um": 5,
     "dev_x_name": "L_W",
     "dev_y_name": "ID",
     "start_dev_x_idx": 0,
     "start_dev_y_idx": 0,
     "dev_x_idx_list": [0],
     "dev_y_idx_list": [0, 1, 2, 3],
-    "dev_x_map": {"0": "2u_100u"},
+    "dev_x_map": {"0": "5u_100u"},
     "dev_y_map": {"0": "A", "1": "B", "2": "C", "3": "D"},
     "dev_y_pitch_list": [207.73, 216.85, 207.73],
     "skip_combinations": []

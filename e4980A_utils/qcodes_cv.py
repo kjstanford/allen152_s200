@@ -16,7 +16,7 @@ settings = {
     'sample_name': 'def',
     'device_group': 'def',
     'frequency': 1e5,  # 100 kHz
-    'measurement_function': 'CPRP',  # Corresponds to KeysightE4980AMeasurements.CPRP
+    'measurement_function': 'CSRS',  # Corresponds to KeysightE4980AMeasurements.CSRS
     'ac_voltage_level': 0.03,
     'dc_bias_enabled': True,
     'start_volt': -2,
@@ -27,7 +27,7 @@ settings = {
     'start_freq': 1e3,  # Start frequency for C-V-F sweep
     'stop_freq': 1e6,   # Stop frequency for C-V-F sweep
     'num_freq_decade': 5,  # Number of frequency points per decade for C-V-F sweep
-    'delay': 0.1
+    'delay': 0.0
 }
 
 class CVMeasurement:

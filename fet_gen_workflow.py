@@ -57,6 +57,8 @@ dev-group:
     dev_y_map         dict          Mapping from device y indices to device y values in Y direction
     dev_x_pitch       float         Device-to-device pitch in X direction in microns
     dev_y_pitch       float         Device-to-device pitch in Y direction in microns (negative = move up)
+    dev_x_pitch_list  list[float]   List of device-to-device pitches in X direction in microns
+    dev_y_pitch_list  list[float]   List of device-to-device pitches in Y direction in microns
     skip_combinations list          List of (DieR, DieC, dev_x_idx, dev_y_idx) tuples to skip
 """
 
@@ -84,6 +86,8 @@ if _misc.get('mode', 'debug') != 'debug':
     # from b1500A_utils.FET_three_terminal import *
     from S200_utils.initialize_s200 import *
     # from S200_utils.chuck_control import *
+    from e4980A_utils.comm_test import *
+    from e4980A_utils.qcodes_cv import *
 
 # import numpy as np
 # import pandas as pd
@@ -95,6 +99,7 @@ from main_utils.main_funs import *
 
 current_dir = os.getcwd()
 
+mylcr_meter = KeysightE4980A('lcr_meter', settings['lcr_meter_address'])
 myb1500 = b1500
 myprober = prober
 smu_gate = b1500.smu3
@@ -103,6 +108,7 @@ smu_source = b1500.smu4
 
 if __name__ == '__main__':
     main_multi_measure(_misc=_misc, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, myb1500=myb1500, smu_gate=smu_gate, smu_drain=smu_drain, smu_source=smu_source, prober=myprober)
+    # main_cvf_measure(_misc=_misc, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, lcr_meter=mylcr_meter, prober=myprober)
     prober.close()
     rm.close()
 
