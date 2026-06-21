@@ -11,5 +11,7 @@ smu_source = b1500.smu4
 
 # print(meas_data.head(10))
 
-FET_sampling_live(b1500=b1500, smu_gate=smu_gate, smu_drain=smu_drain, smu_source=smu_source, gate_voltage=0.0, drain_voltage=0.0, source_voltage=0.0, hold_time=0.0, base_voltage=0.0, sampling_interval=1.0, nop=11, Irange='1 nA limited auto ranging', Vrange='2 V limited auto ranging')
+meas_data = FET_sampling_live(b1500=b1500, smu_gate=smu_gate, smu_drain=smu_drain, smu_source=smu_source, gate_voltage=0.0, drain_voltage=0.0, source_voltage=0.0, hold_time=0.0, base_voltage=0.0, sampling_interval=1.0, nop=11, Irange='1 nA limited auto ranging', Vrange='2 V limited auto ranging')
 
+print(meas_data.columns)
+print(meas_data.head(10))

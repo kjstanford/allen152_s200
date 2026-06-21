@@ -523,12 +523,17 @@ def FET_sampling_live(b1500=None, smu_gate=None, smu_drain=None, smu_source=None
     b1500.clear_timer()
     b1500.send_trigger()
 
-    meas = []
+    df_dict = {}
+    channel_dict = {smu_gate.name: 'Gate', smu_drain.name: 'Drain', smu_source.name: 'Source', 'MISC': 'Common'}
     for ii in range(nop):
         read_data = b1500.read_channels(1 + 2 * 3)
-        print(read_data)
-        meas.append(read_data)
+        for item in read_data:
+            df_dict_key = f"{channel_dict.get(item[1], item[1])} {item[2]}"
+            df_dict.setdefault(df_dict_key, []).append(item[3])
+    
+    data = pd.DataFrame(df_dict)
 
+    return data
 
     
 
