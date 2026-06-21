@@ -363,6 +363,118 @@ def IdVd_multi_Vg_multi_cycle(b1500, smu_gate, smu_drain, smu_source, drain_star
 
     return all_data
 
+def FET_sampling(b1500=None, smu_gate=None, smu_drain=None, smu_source=None, gate_voltage=0.0, drain_voltage=0.0, source_voltage=0.0, hold_time=0.0, base_voltage=0.0, sampling_interval=1.0, nop=11, Irange='1 nA limited auto ranging', Vrange='2 V limited auto ranging'):
+    """
+    Sampling of Id, Ig, and Is at specified gate, drain, and source voltages.
+
+    Parameters:
+    - b1500: AgilentB1500 instance
+    - smu_gate: SMU instance for gate
+    - smu_drain: SMU instance for drain
+    - smu_source: SMU instance for source
+    - gate_voltage: Voltage to apply to the gate
+    - drain_voltage: Voltage to apply to the drain
+    - source_voltage: Voltage to apply to the source
+    - hold_time: Hold time in seconds
+    - base_voltage: Base voltage
+    - sampling_interval: Interval between samples in seconds
+    - nop: Number of points to sample
+    - Irange: Current measurement range for SMUs
+    - Vrange: Voltage measurement range for SMUs
+
+    Returns:
+    - data: Pandas DataFrame containing the sampled values
+    """
+
+    compliance = 0.1
+
+    if b1500 is None or smu_gate is None or smu_drain is None or smu_source is None:
+        raise ValueError("b1500 and SMU instances must be provided")
+    
+    b1500.data_format(21, mode=1)
+    b1500.meas_mode('SAMPLING', smu_gate, smu_drain, smu_source)
+
+    for smu in [smu_gate, smu_drain, smu_source]:
+        smu.enable()
+        # smu.adc_type = 'HRADC'
+        smu.adc_type = 'HSADC'
+        smu.meas_range_current = Irange
+        smu.meas_op_mode = 'COMPLIANCE_SIDE'
+
+    b1500.sampling_mode = 'LINEAR'
+    # b1500.adc_setup('HRADC', 'AUTO', 6)
+    b1500.adc_setup('HSADC', 'AUTO', 1)
+
+    b1500.sampling_timing(hold_time, sampling_interval, nop)
+    b1500.sampling_auto_abort(False, post='BIAS')
+    b1500.time_stamp = True
+
+    smu_gate.sampling_source('VOLTAGE', Vrange, base_voltage, gate_voltage, compliance)
+    smu_drain.sampling_source('VOLTAGE', Vrange, base_voltage, drain_voltage, compliance)
+    smu_source.sampling_source('VOLTAGE', Vrange, base_voltage, source_voltage, compliance)
+
+    b1500.check_errors()
+    b1500.clear_buffer()
+    b1500.clear_timer()
+    b1500.send_trigger()
+    b1500.check_idle()
+
+    if not b1500.check_errors():
+        print("Measurement successful :D")
+    else:
+        print("Measurement completed with errors :(")
+
+    raw_data_str = b1500.read()
+
+    data_list = []
+    type_dict = {'I': 'Current', 'V': 'Voltage', 'T': 'Time'}
+    for item in raw_data_str.strip().split(','):
+        # print(f"Processing item: '{item}'")
+        if len(item) < 5: 
+            continue
+        item_dict = {}
+        item_dict['Value'] = float(item[-13:])
+        if item[-15:-13] == 'ZX':
+            item_dict['Channel'] = ''
+            item_dict['Type'] = 'Time'
+        else:  
+            item_dict['Channel'] = item[-15]
+            item_dict['Type'] = type_dict.get(item[-14], '')
+        data_list.append(item_dict)
+    
+    df = pd.DataFrame(data_list)
+
+    unique_params = df[['Channel', 'Type']].drop_duplicates()
+    items_per_step = len(unique_params)
+    print(f"Detected {items_per_step} items per measurement step.")
+
+    def terminal(idx):
+        idx = ord(idx) - 66
+        if f"SMU{idx}" == smu_gate.name:
+            return 'Gate'
+        elif f"SMU{idx}" == smu_drain.name:
+            return 'Drain'
+        elif f"SMU{idx}" == smu_source.name:
+            return 'Source'
+        else:
+            # raise ValueError("Invalid SMU instance")
+            return ''
+        
+    df['Group_ID'] = df.index // items_per_step
+    df['New_Column'] = df['Channel'] + '_' + df['Type']
+    df_pivoted = df.pivot(index='Group_ID', columns='New_Column', values='Value')
+    df_pivoted.columns.name = None
+    df_pivoted = df_pivoted.reset_index(drop=True)
+    data = df_pivoted
+
+    data.columns = [f"{terminal(col[0])}{col[1:]}" for col in data.columns]
+
+    return data
+
+
+
+
+    
 
     
 
