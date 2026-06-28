@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import yaml
 import time
 import pandas as pd
+# from math import floor, ceil, round
 
 # default settings
 # Define Measurement Settings
@@ -27,7 +28,7 @@ settings = {
     'start_freq': 1e3,  # Start frequency for C-V-F sweep
     'stop_freq': 1e6,   # Stop frequency for C-V-F sweep
     'num_freq_decade': 5,  # Number of frequency points per decade for C-V-F sweep
-    'delay': 0.0
+    'delay': 1e-3
 }
 
 class CVMeasurement:
@@ -89,7 +90,7 @@ class CVMeasurement:
         # Similar to perform_cv_sweep but with additional frequency sweep logic
         print(f"{'Set (V)':<10} {'Read (V)':<10} {'Freq (Hz)':<10} {'Cap (F)':<10} {'Diss':<10} {'Dir':<10}")
         self.results = {'voltage': [], 'voltage_readback': [], 'frequency': [], 'capacitance': [], 'dissipation': [], 'direction': []}
-        freqs = np.logspace(np.log10(self.settings['start_freq']), np.log10(self.settings['stop_freq']), self.settings['num_freq_decade'] * int(np.log10(self.settings['stop_freq'] / self.settings['start_freq'])))
+        freqs = np.logspace( np.log10(self.settings['start_freq']), np.log10(self.settings['stop_freq']), round( self.settings['num_freq_decade'] * np.log10(self.settings['stop_freq'] / self.settings['start_freq'])) )
         if self.settings['sweep_mode'] == 'double':
             if self.settings['step_volt'] is not None:
                 v_sweep_fwd = np.arange(self.settings['start_volt'], self.settings['stop_volt'] + self.settings['step_volt'], self.settings['step_volt'])

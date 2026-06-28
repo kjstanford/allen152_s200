@@ -73,19 +73,19 @@ def main(dr, dc, lcr_meter):
 
 def main_cvf(dr, dc, lcr_meter):
     cvf_settings = settings.copy()
-    cvf_settings['sample_name'] = "baseline_2nm_itofet"
-    cvf_settings['device_group'] = "L5W100_A_0_0"
+    cvf_settings['sample_name'] = "wf2"
+    cvf_settings['device_group'] = "-3_0_13B_0"
     cvf_settings['start_volt'] = -1.0
     cvf_settings['stop_volt'] = 3.0
-    cvf_settings['step_volt'] = 0.1
-    cvf_settings['start_freq'] = 1e3
+    cvf_settings['step_volt'] = 0.05
+    cvf_settings['start_freq'] = 5e3
     cvf_settings['stop_freq'] = 1e6
-    cvf_settings['num_freq_decade'] = 2
+    cvf_settings['num_freq_decade'] = 4
 
     dev_row_idx = dr  # Index of the device row in the CSV file (0-based)
     dev_col_idx = dc  # Index of the device column in the CSV file (0-based)
 
-    save_dir = os.path.join("saved_data", "chihsin_iedm26_v0", cvf_settings['sample_name'], cvf_settings['device_group'])
+    save_dir = os.path.join("saved_data", "WD_BOBAFET_v0", cvf_settings['sample_name'], cvf_settings['device_group'])
     os.makedirs(save_dir, exist_ok=True)
     cvf_measurement = CVMeasurement(cvf_settings, lcr_meter=lcr_meter)
     move_contact_height(prober=prober)
@@ -125,8 +125,8 @@ def main_cvf(dr, dc, lcr_meter):
     plt.title(f'C-V-F Sweep: {cvf_settings["device_group"]}')
     plt.grid(True)
     plt.tight_layout()
-    plt.show(block=True)
-    plt.pause(5)
+    plt.show(block=False)
+    plt.pause(20)
 
     if save_plot:
         plt.savefig(save_plot_path, dpi=300, bbox_inches='tight')
