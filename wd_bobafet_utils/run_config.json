@@ -1,0 +1,34 @@
+{
+  "miscellaneous": {
+    "mode": "save",
+    "data_parent_dir": "saved_data/WD_BOBAFET_v0",
+    "repeat_measurement": false,
+    "remarks": "cvf_1"
+  },
+  "measurement": {
+    "Irange": "1 nA limited auto ranging",
+    "Vrange": "2 V limited auto ranging",
+    "default_start": -1.0,
+    "start_limit": -1.0,
+    "default_stop": 3.0,
+    "stop_limit": 3.5,
+    "scan_step": 0.05,
+    "main_step": 0.025,
+    "Vdlin": 0.05,
+    "Vdsat": 1.5,
+    "IdVg_drain_list": [0.05, 1.5],
+    "IdVg_cycles": 2
+  },
+  "sample": {
+    "sample_name": "main_wf2",
+    "die_id": "-3_0"
+  },
+  "dev-group": {
+    "dev_group_name": "AC_R",
+    "W_um": 10,
+    "L_um": 4,
+    "start_dev_y_idx": 0,
+    "dev_y_idx_list": [1, 5, 9, 13, 17, 21, 25, 29, 33, 37],
+    "dev_y_pitch": 290.0
+  }
+}
