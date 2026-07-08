@@ -140,12 +140,7 @@ def parse_semicolon_data_to_df(**data_dict):
 
 
 # %% Define an Id-Vgs test
-def idvg_sweep_smu(my4200,vgs_start, vgs_stop, vgs_step, vds_const,
-               gatechan, sourcechan, drainchan,
-               gatecomp, sourcecomp, draincomp, 
-               gaterange, sourcerange, drainrange,
-               dual_sweep = 0, integ_time = 3,
-               hold_time = 0, delay_time = 0.001, standby = 1, resolution = 5):
+def idvg_sweep_smu(my4200,vgs_start, vgs_stop, vgs_step, vds_const, gatechan, sourcechan, drainchan, gatecomp, sourcecomp, draincomp, gaterange, sourcerange, drainrange, dual_sweep = 0, integ_time = 3, hold_time = 0, delay_time = 0.001, standby = 1, resolution = 5):
     
     print("Setting up IDVG test...")
     # Clear all readings from buffer
@@ -226,6 +221,19 @@ def idvg_sweep_smu(my4200,vgs_start, vgs_stop, vgs_step, vds_const,
         switch_rpm_mode(my4200, drainrpm[0], drainrpm[1], 0)
         switch_rpm_mode(my4200, sourcerpm[0], sourcerpm[1], 0)
         print("RPM switched to PMU")
+    
+    plt.plot(data['VG'].to_numpy(), np.abs(data['ID'].to_numpy()), label='ID', color='blue', linewidth=2)
+    plt.plot(data['VG'].to_numpy(), np.abs(data['IG'].to_numpy()), label='IG', color='red', linewidth=2)
+    plt.plot(data['VG'].to_numpy(), np.abs(data['IS'].to_numpy()), label='IS', color='red', linewidth=2)
+    plt.yscale('log')
+    plt.xlabel('Gate Voltage (V)')
+    plt.ylabel('Drain Current (A)')
+    plt.title('ID-VG Sweep')
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.show(block=False)
+    plt.pause(20)
+    plt.close()
+
     return data
 
 
@@ -405,5 +413,10 @@ def keithley_nvm_dcSweep(my4200, SMU_low="SMU1", SMU_high="SMU2", compCH=1, meas
     df = parse_semicolon_data_to_df(Vforce=vforce_data, Imeasd=imeasd_data, Timed=timed_data)
     return df
 
-
+if __name__ == "__main__":
+    my4200 = connect_4200()
+    data = idvg_sweep_smu(my4200, vgs_start=-2, vgs_stop=2, vgs_step=0.05, vds_const=0.05, gatechan=1, sourcechan=2, drainchan=3, gatecomp=0.1, sourcecomp=0.1, draincomp=0.1, gaterange="1e-6", sourcerange="1e-6", drainrange="1e-6", dual_sweep=1, integ_time=3)
+    print(data)
+    disconnect_4200(my4200)
+    
     

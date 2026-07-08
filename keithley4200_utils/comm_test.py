@@ -8,5 +8,5 @@ inst.timeout = 30000
 inst.write_termination = '\n'
 inst.read_termination = '\n'
 
-print(inst.query("ID"))
+print(inst.query("IDN?"))
 inst.close()
