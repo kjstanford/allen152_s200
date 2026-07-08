@@ -7,7 +7,7 @@ from math import ceil, floor
 from data_processing_utils.IdVg_param_extract import *
 from b1500A_utils.FET_three_terminal import *
 from S200_utils.chuck_control import *
-from e4980A_utils.qcodes_cv import *
+# from e4980A_utils.qcodes_cv import *
 
 def measure_initial_scan_v2(myb1500=None, smu_gate=None, smu_drain=None, smu_source=None, configs={}, data_all=None, descriptor=None, save_dir=None, mode=None, W=None, L=None):
     print("\n################################################")
@@ -201,24 +201,25 @@ def measure_all_v2(myb1500=None, smu_gate=None, smu_drain=None, smu_source=None,
         print(f"Proceeding with main measurement sequence with gate voltage range {gate_start} V to {gate_stop} V and Vt_sat = {Vt_sat} V\n")
         measure_main_IdVg(myb1500=myb1500, smu_gate=smu_gate, smu_drain=smu_drain, smu_source=smu_source, gate_start=gate_start, configs=_meas, descriptor=descriptor, save_dir=save_dir, mode=mode, cycle_colors=cycle_colors)
 
-def measure_cvf(lcr_meter=None, save_dir=None, _meas=None, _sample=None, _dev_grp=None, mode=None, descriptor=None):
+def measure_cvf(lcr_meter=None, save_dir=None, _meas=None, _sample=None, _dev_grp=None, mode=None, descriptor=None, cv_func = 'CSRS'):
     cvf_settings = settings.copy()
     cvf_settings['sample_name'] = _sample.get('sample_name', 'unknown')
     cvf_settings['device_group'] = _dev_grp.get('dev_group_name', 'unknown')
     cvf_settings['start_volt'] = _meas.get('default_start', -1.0)
     cvf_settings['stop_volt'] = _meas.get('default_stop', 3.0)
-    cvf_settings['step_volt'] = _meas.get('scan_step', 0.1)
-    cvf_settings['start_freq'] = _meas.get('start_freq', 1e3)
+    cvf_settings['step_volt'] = _meas.get('scan_step', 0.05)
+    cvf_settings['start_freq'] = _meas.get('start_freq', 5e3)
     cvf_settings['stop_freq'] = _meas.get('stop_freq', 1e6)
-    cvf_settings['num_freq_decade'] = _meas.get('num_freq_decade', 3)
+    cvf_settings['num_freq_decade'] = _meas.get('num_freq_decade', 4)
+    cvf_settings['measurement_function'] = cv_func
 
     cvf_measurement = CVMeasurement(cvf_settings, lcr_meter=lcr_meter)
     df = cvf_measurement.perform_cvf_sweep()
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    save_csv_path = os.path.join(save_dir, f"cvf_{timestamp}_{descriptor}_data.csv")
-    save_settings_path = os.path.join(save_dir, f"cvf_{timestamp}_{descriptor}_settings.yaml")
-    save_plot_path = os.path.join(save_dir, f"cvf_{timestamp}_{descriptor}_plot.png")
+    save_csv_path = os.path.join(save_dir, f"CV_{timestamp}_{descriptor}.csv")
+    save_settings_path = os.path.join(save_dir, f"CV_{timestamp}_{descriptor}.yaml")
+    save_plot_path = os.path.join(save_dir, f"CV_{timestamp}_{descriptor}.png")
 
     if mode == 'save':
         df.to_csv(save_csv_path, index=False)
@@ -260,6 +261,7 @@ def main_multi_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=None
     mode = _misc.get('mode', 'debug')
     data_parent_dir = _misc.get('data_parent_dir', os.getcwd())
     repeat_measurement = _misc.get('repeat_measurement', False)
+    remarks = _misc.get('remarks', 'init_0')
 
     sample_name = _sample.get('sample_name', '')
     start_DieR_idx = _sample.get('start_DieR_idx', 0)
@@ -297,9 +299,6 @@ def main_multi_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=None
     current_x_displace_from_origin = 0
     current_y_displace_from_origin = 0
 
-    save_dir = os.path.join(data_parent_dir, sample_name, dev_group_name)
-    os.makedirs(save_dir, exist_ok=True)
-
     print("=================================================")
     print(f"Starting measurement for {sample_name} with device group {dev_group_name}")
     print("=================================================")
@@ -312,11 +311,14 @@ def main_multi_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=None
         if (DieC_idx - start_DieC_idx) % 2 == 1:
             DieR_idx_list = list(reversed(DieR_idx_list))
         for DieR_idx in DieR_idx_list:
+            save_dir = os.path.join(data_parent_dir, sample_name, f"{DieC_idx}_{DieR_idx}", dev_group_name, f"{remarks}")
+            os.makedirs(save_dir, exist_ok=True)
             for dev_x_idx in dev_x_idx_list:
                 for dev_y_idx in dev_y_idx_list:
                     print()
                     print("=================================================")
-                    descriptor = f"DieR_{DieR_idx}_DieC_{DieC_idx}_{dev_x_name}_{dev_x_map.get(str(dev_x_idx), str(dev_x_idx))}_{dev_y_name}_{dev_y_map.get(str(dev_y_idx), str(dev_y_idx))}"
+                    # descriptor = f"DieR_{DieR_idx}_DieC_{DieC_idx}_{dev_x_name}_{dev_x_map.get(str(dev_x_idx), str(dev_x_idx))}_{dev_y_name}_{dev_y_map.get(str(dev_y_idx), str(dev_y_idx))}"
+                    descriptor = f"{remarks}_{DieC_idx}_{DieR_idx}_{dev_x_idx}_{dev_y_idx}"
                     measured_previously = False
                     if (DieR_idx, DieC_idx, dev_x_idx, dev_y_idx) in skip_combinations:
                         print(f"Skipping device at DieR = {DieR_idx}, DieC = {DieC_idx}, dev_x = {dev_x_idx} with label {dev_x_map.get(str(dev_x_idx), str(dev_x_idx))}, dev_y = {dev_y_idx} with label {dev_y_map.get(str(dev_y_idx), str(dev_y_idx))}")
@@ -327,7 +329,7 @@ def main_multi_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=None
                             continue
                         for file in files:
                             if file.endswith(".csv"):
-                                if descriptor in file:
+                                if f"{descriptor}.csv" in file:
                                     measured_previously = True
                                     break
 
@@ -502,6 +504,7 @@ def main_cvf_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, lcr_meter=None
     mode = _misc.get('mode', 'debug')
     data_parent_dir = _misc.get('data_parent_dir', os.getcwd())
     repeat_measurement = _misc.get('repeat_measurement', False)
+    remarks = _misc.get('remarks', 'cvf_0')
 
     sample_name = _sample.get('sample_name', '')
     start_DieR_idx = _sample.get('start_DieR_idx', 0)
@@ -539,9 +542,6 @@ def main_cvf_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, lcr_meter=None
     current_x_displace_from_origin = 0
     current_y_displace_from_origin = 0
 
-    save_dir = os.path.join(data_parent_dir, sample_name, dev_group_name)
-    os.makedirs(save_dir, exist_ok=True)
-
     print("=================================================")
     print(f"Starting measurement for {sample_name} with device group {dev_group_name}")
     print("=================================================")
@@ -554,12 +554,15 @@ def main_cvf_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, lcr_meter=None
         if (DieC_idx - start_DieC_idx) % 2 == 1:
             DieR_idx_list = list(reversed(DieR_idx_list))
         for DieR_idx in DieR_idx_list:
+            save_dir = os.path.join(data_parent_dir, sample_name, f"{DieC_idx}_{DieR_idx}", dev_group_name, f"{remarks}")
+            os.makedirs(save_dir, exist_ok=True)
             for dev_x_idx in dev_x_idx_list:
                 for dev_y_idx in dev_y_idx_list:
                     print()
                     print("=================================================")
-                    descriptor = f"DieR_{DieR_idx}_DieC_{DieC_idx}_{dev_x_name}_{dev_x_map.get(str(dev_x_idx), str(dev_x_idx))}_{dev_y_name}_{dev_y_map.get(str(dev_y_idx), str(dev_y_idx))}"
-                    good_device = False
+                    # descriptor = f"DieR_{DieR_idx}_DieC_{DieC_idx}_{dev_x_name}_{dev_x_map.get(str(dev_x_idx), str(dev_x_idx))}_{dev_y_name}_{dev_y_map.get(str(dev_y_idx), str(dev_y_idx))}"
+                    descriptor = f"{remarks}_{DieC_idx}_{DieR_idx}_{dev_x_idx}_{dev_y_idx}"
+                    good_device = True
                     cvf_previously_measured = False
                     if (DieR_idx, DieC_idx, dev_x_idx, dev_y_idx) in skip_combinations:
                         print(f"Skipping device at DieR = {DieR_idx}, DieC = {DieC_idx}, dev_x = {dev_x_idx} with label {dev_x_map.get(str(dev_x_idx), str(dev_x_idx))}, dev_y = {dev_y_idx} with label {dev_y_map.get(str(dev_y_idx), str(dev_y_idx))}")
@@ -570,14 +573,17 @@ def main_cvf_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, lcr_meter=None
                             continue
                         for file in files:
                             if file.endswith(".csv"):
-                                if "_main_" in file:
-                                    if descriptor in file:
-                                        good_device = True
-                                        break
-                                if "cvf_" in file:
-                                    if descriptor in file:
-                                        cvf_previously_measured = True
-                                        break
+                                if f"{descriptor}.csv" in file:
+                                    cvf_previously_measured = True
+                                    break
+                                # if "_main_" in file:
+                                #     if descriptor in file:
+                                #         good_device = True
+                                #         break
+                                # if "cvf_" in file:
+                                #     if descriptor in file:
+                                #         cvf_previously_measured = True
+                                #         break
 
                     if not good_device:
                         print(f"Device at DieR = {DieR_idx}, DieC = {DieC_idx}, dev_x = {dev_x_idx} with label {dev_x_map.get(str(dev_x_idx), str(dev_x_idx))}, dev_y = {dev_y_idx} with label {dev_y_map.get(str(dev_y_idx), str(dev_y_idx))} is not good")
@@ -622,7 +628,8 @@ def main_cvf_measure(_misc={}, _meas={}, _sample={}, _dev_grp={}, lcr_meter=None
 
                     move_contact_height(prober=prober)
                     
-                    measure_cvf(lcr_meter=lcr_meter, save_dir=save_dir, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, mode=mode, descriptor=descriptor)
+                    measure_cvf(lcr_meter=lcr_meter, save_dir=save_dir, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, mode=mode, descriptor=descriptor, cv_func='CSRS')
+                    measure_cvf(lcr_meter=lcr_meter, save_dir=save_dir, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, mode=mode, descriptor=descriptor, cv_func='CPG')
 
                     print("Finished measurement.")
 

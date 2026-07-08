@@ -7,6 +7,8 @@ Example:
 """
 
 # "dev_y_idx_list": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40],
+# "dev_y_idx_list": [1, 5, 9, 13, 17, 21, 25, 29, 33, 37],
+# "dev_y_idx_list": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
 
 import argparse
 import json
@@ -44,6 +46,7 @@ smu_drain = b1500.smu2
 smu_source = b1500.smu3
 
 if __name__ == '__main__':
-    measure_dev_grp(_misc=_misc, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, myb1500=myb1500, smu_gate=smu_gate, smu_drain=smu_drain, smu_source=smu_source, prober=myprober)
+    # measure_dev_grp(_misc=_misc, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, myb1500=myb1500, smu_gate=smu_gate, smu_drain=smu_drain, smu_source=smu_source, prober=myprober)
+    measure_dev_grp_cvf(_misc=_misc, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, lcr_meter=mylcr_meter, prober=myprober)
     myprober.close()
     rm.close()

@@ -86,8 +86,8 @@ if _misc.get('mode', 'debug') != 'debug':
     # from b1500A_utils.FET_three_terminal import *
     from S200_utils.initialize_s200 import *
     # from S200_utils.chuck_control import *
-    from e4980A_utils.comm_test import *
-    from e4980A_utils.qcodes_cv import *
+    # from e4980A_utils.comm_test import *
+    # from e4980A_utils.qcodes_cv import *
 
 # import numpy as np
 # import pandas as pd
@@ -99,7 +99,7 @@ from main_utils.main_funs import *
 
 current_dir = os.getcwd()
 
-mylcr_meter = KeysightE4980A('lcr_meter', settings['lcr_meter_address'])
+# mylcr_meter = KeysightE4980A('lcr_meter', settings['lcr_meter_address'])
 myb1500 = b1500
 myprober = prober
 smu_gate = b1500.smu3

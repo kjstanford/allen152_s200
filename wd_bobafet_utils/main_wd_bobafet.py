@@ -201,7 +201,65 @@ def measure_all_v2(myb1500=None, smu_gate=None, smu_drain=None, smu_source=None,
         print(f"Proceeding with main measurement sequence with gate voltage range {gate_start} V to {gate_stop} V and Vt_sat = {Vt_sat} V\n")
         measure_main_IdVg(myb1500=myb1500, smu_gate=smu_gate, smu_drain=smu_drain, smu_source=smu_source, gate_start=gate_start, configs=_meas, descriptor=descriptor, save_dir=save_dir, mode=mode, cycle_colors=cycle_colors)
 
+def measure_cvf(lcr_meter=None, save_dir=None, _meas=None, _sample=None, _dev_grp=None, mode=None, descriptor=None, cv_func = 'CSRS'):
+    cvf_settings = settings.copy()
+    cvf_settings['sample_name'] = _sample.get('sample_name', 'main_wf2')
+    cvf_settings['device_group'] = _dev_grp.get('dev_group_name', 'AC_R')
+    cvf_settings['start_volt'] = _meas.get('default_start', -1.0)
+    cvf_settings['stop_volt'] = _meas.get('default_stop', 3.0)
+    cvf_settings['step_volt'] = _meas.get('scan_step', 0.05)
+    cvf_settings['start_freq'] = _meas.get('start_freq', 5e3)
+    cvf_settings['stop_freq'] = _meas.get('stop_freq', 1e6)
+    cvf_settings['num_freq_decade'] = _meas.get('num_freq_decade', 4)
+    cvf_settings['measurement_function'] = cv_func
 
+    cvf_measurement = CVMeasurement(cvf_settings, lcr_meter=lcr_meter)
+    df = cvf_measurement.perform_cvf_sweep()
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    save_csv_path = os.path.join(save_dir, f"CV_{timestamp}_{descriptor}.csv")
+    save_settings_path = os.path.join(save_dir, f"CV_{timestamp}_{descriptor}.yaml")
+    save_plot_path = os.path.join(save_dir, f"CV_{timestamp}_{descriptor}.png")
+
+    if mode == 'save':
+        df.to_csv(save_csv_path, index=False)
+        print(f"Data saved to {save_csv_path}")
+
+        cvf_settings.update({'timestamp': timestamp})
+        with open(save_settings_path, 'w') as f:
+            yaml.dump(cvf_settings, f)
+        print(f"Settings saved to {save_settings_path}")
+
+    # Plotting
+    fig = plt.figure()
+    volt_col = 'voltage'
+    freq_col = 'frequency'
+    freq_unique = df[freq_col].unique()
+    dir_unique = df['direction'].unique() if 'direction' in df.columns else ['fwd']
+    for direction in dir_unique:
+        for freq in freq_unique:
+            mask = (df[volt_col].notna()) & (df[freq_col] == freq) & ((df['direction'] == direction) if 'direction' in df.columns else True)
+            marker = 'o' if direction == 'fwd' else 's'
+            color = plt.cm.viridis((np.log10(freq) - np.log10(cvf_settings['start_freq'])) / (np.log10(cvf_settings['stop_freq']) - np.log10(cvf_settings['start_freq'])))
+            plt.plot(df[mask][volt_col], df[mask]['capacitance'], marker=marker, color=color, label=f'{direction} - {freq/1e3:.1f} kHz')
+    # plt.legend()
+    plt.xlabel('Voltage (V)')
+    plt.ylabel('Capacitance (F)')
+    plt.title(f'C-V-F Sweep: {cvf_settings["device_group"]}')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show(block=False)
+    plt.pause(5)
+
+    if mode == 'save':
+        plt.savefig(save_plot_path, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to {save_plot_path}")
+
+    plt.close(fig)
+
+def measure_all_cvf(lcr_meter=None, save_dir=None, _meas=None, _sample=None, _dev_grp=None, mode=None, descriptor=None):
+    measure_cvf(lcr_meter=lcr_meter, save_dir=save_dir, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, mode=mode, descriptor=descriptor, cv_func = 'CPG')
+    measure_cvf(lcr_meter=lcr_meter, save_dir=save_dir, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, mode=mode, descriptor=descriptor, cv_func = 'CSRS')
 
 def measure_dev_grp(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=None, smu_gate=None, smu_drain=None, smu_source=None, prober=None):
     mode = _misc.get('mode', 'debug')
@@ -279,7 +337,7 @@ def measure_dev_grp(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=None, s
 
         print("=================================================")
 
-def measure_dev_grp_cvf(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=None, smu_gate=None, smu_drain=None, smu_source=None, prober=None):
+def measure_dev_grp_cvf(_misc={}, _meas={}, _sample={}, _dev_grp={}, lcr_meter=None, prober=None):
     mode = _misc.get('mode', 'debug')
     data_parent_dir = _misc.get('data_parent_dir', os.getcwd())
     repeat_measurement = _misc.get('repeat_measurement', False)
@@ -347,7 +405,7 @@ def measure_dev_grp_cvf(_misc={}, _meas={}, _sample={}, _dev_grp={}, myb1500=Non
 
         move_contact_height(prober=prober)
         
-        measure_all_v2(myb1500=myb1500, smu_gate=smu_gate, smu_drain=smu_drain, smu_source=smu_source, save_dir=save_dir, mode=mode, _meas=_meas, descriptor=descriptor, W=W, L=L, cycle_colors=['blue', 'red', 'green', 'black', 'orange'])
+        measure_all_cvf(lcr_meter=lcr_meter, save_dir=save_dir, _meas=_meas, _sample=_sample, _dev_grp=_dev_grp, mode=mode, descriptor=descriptor)
 
         print("Finished measurement.")
 

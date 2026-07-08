@@ -18,8 +18,8 @@ def move_relative(prober=None, x_microns=0, y_microns=0):
 
     # time.sleep(1)
     print(f"Commanding move: X={x_microns}, Y={y_microns}...")        
-    prober.write(f'MoveChuck {-1*x_microns} {-1*y_microns} R Y 100.')
-    time.sleep(10)
+    prober.write(f'MoveChuck {-1*x_microns} {-1*y_microns} R Y 10.')
+    time.sleep(20)
 
     # print(f"Moving chuck to contact height...")
     # prober.write('MoveChuckContact 100.')
@@ -39,8 +39,8 @@ def move_separation_height(prober=None):
     Move the chuck to separation height.
     """
     print(f"Moving chuck to separation height...")
-    prober.write('MoveChuckSeparation 100.')
-    time.sleep(5)
+    prober.write('MoveChuckSeparation 10.')
+    time.sleep(10)
     return 0
 
 def move_contact_height(prober=None):
@@ -52,6 +52,6 @@ def move_contact_height(prober=None):
     Move the chuck to contact height.
     """
     print(f"Moving chuck to contact height...")
-    prober.write('MoveChuckContact 100.')
-    time.sleep(5)
+    prober.write('MoveChuckContact 10.')
+    time.sleep(10)
     # return 0

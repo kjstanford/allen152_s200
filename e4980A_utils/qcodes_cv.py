@@ -89,8 +89,10 @@ class CVMeasurement:
     def perform_cvf_sweep(self):
         # Similar to perform_cv_sweep but with additional frequency sweep logic
         print(f"{'Set (V)':<10} {'Read (V)':<10} {'Freq (Hz)':<10} {'Cap (F)':<10} {'Diss':<10} {'Dir':<10}")
-        self.results = {'voltage': [], 'voltage_readback': [], 'frequency': [], 'capacitance': [], 'dissipation': [], 'direction': []}
-        freqs = np.logspace( np.log10(self.settings['start_freq']), np.log10(self.settings['stop_freq']), round( self.settings['num_freq_decade'] * np.log10(self.settings['stop_freq'] / self.settings['start_freq'])) )
+        col_name_map = {'CPG': 'parallel_conductance', 'CSRS': 'series_resistance', 'CPD': 'parallel_dissipation'}
+        self.results = {'voltage': [], 'voltage_readback': [], 'frequency': [], 'capacitance': [], col_name_map[self.settings['measurement_function']]: [], 'direction': []}
+        num_freq_points = round( self.settings['num_freq_decade'] * np.log10(self.settings['stop_freq'] / self.settings['start_freq'])) + 1
+        freqs = np.logspace( np.log10(self.settings['start_freq']), np.log10(self.settings['stop_freq']), num_freq_points )
         if self.settings['sweep_mode'] == 'double':
             if self.settings['step_volt'] is not None:
                 v_sweep_fwd = np.arange(self.settings['start_volt'], self.settings['stop_volt'] + self.settings['step_volt'], self.settings['step_volt'])
@@ -122,7 +124,7 @@ class CVMeasurement:
                 self.results['voltage_readback'].append(v_read)
                 self.results['frequency'].append(f)
                 self.results['capacitance'].append(meas[0])
-                self.results['dissipation'].append(meas[1])
+                self.results[col_name_map[self.settings['measurement_function']]].append(meas[1])
                 self.results['direction'].append(d)
 
         self.results_df = pd.DataFrame(self.results)
