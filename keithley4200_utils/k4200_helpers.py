@@ -236,8 +236,176 @@ def idvg_sweep_smu(my4200,vgs_start, vgs_stop, vgs_step, vds_const, gatechan, so
 
     return data
 
-def idvg_sweep_pmu(my4200):
-    pass
+
+def parse_pmu_data(raw_string):
+    """
+    Parse a :PMU:DATA:GET return string into a DataFrame.
+
+    Assumes each point is `;`-separated, and each point contains
+    2 groups of 4 comma-separated fields: V, I, T, status.
+
+    """
+
+    points = raw_string.strip().rstrip(';').split(';')
+    records = []
+    for p in points:
+        fields = p.split(',')
+        if len(fields) != 2 * 4:
+            raise ValueError(
+                f"Expected {2*4} fields per point, got {len(fields)}: {p}"
+            )
+        rec = {}
+        for ch, name in enumerate(['H', 'L']):
+            base = ch * 4
+            rec[f'V{name}'] = float(fields[base])
+            rec[f'I{name}'] = float(fields[base + 1])
+            rec[f'T{name}'] = float(fields[base + 2])
+            rec[f'S{name}'] = fields[base + 3]
+        records.append(rec)
+
+    return pd.DataFrame(records)
+
+
+def idvg_sweep_pmu(my4200, vgs_start, vgs_stop, vgs_step, vds_const,
+                    gatechan, drainchan, sourcechan,
+                    gate_load=1e6, drain_load=1e6, source_load=1e6,
+                    gate_range_type=1, gate_range=100e-9,
+                    drain_range_type=1, drain_range=100e-9,
+                    source_range_type=1, source_range=100e-9,
+                    period=1e-3, width=5e-4, rise=1e-5, fall=1e-5, delay=1e-4,
+                    meas_start_pct=0.75, meas_stop_pct=0.9,
+                    vgs_base=0.0, dual_sweep=0, use_llec=True):
+
+    print("Setting up pulsed IDVG test (PMU)...")
+
+    # Reset PMU to standard pulse mode
+    my4200.write(":PMU:INIT 0")
+
+    # Switch RPMs (if present) from SMU mode to PMU mode
+    if check_for_rpms(my4200):
+        gaterpm  = map_rpm_to_smu(gatechan)
+        drainrpm = map_rpm_to_smu(drainchan)
+        sourcerpm = map_rpm_to_smu(sourcechan)
+        my4200.write(f":PMU:RPM:CONFIGURE PMU{gaterpm[0]}-{gaterpm[1]}, 0")
+        my4200.write(f":PMU:RPM:CONFIGURE PMU{drainrpm[0]}-{drainrpm[1]}, 0")
+        my4200.write(f":PMU:RPM:CONFIGURE PMU{sourcerpm[0]}-{sourcerpm[1]}, 0")
+        print("RPM switched to PMU")
+
+    # Load impedance per channel
+    my4200.write(f":PMU:LOAD {gatechan}, {gate_load}")
+    my4200.write(f":PMU:LOAD {drainchan}, {drain_load}")
+    my4200.write(f":PMU:LOAD {sourcechan}, {source_load}")
+
+    # Spot-mean (DC-like) measure mode
+    my4200.write(":PMU:MEASURE:MODE 1")
+
+    # Gate: amplitude sweep (VAR1 equivalent)
+    my4200.write(f":PMU:SWEEP:PULSE:AMPLITUDE {gatechan}, "
+                 f"{vgs_start}, {vgs_stop}, {vgs_step}, {vgs_base}, {dual_sweep}")
+
+    # Drain: constant pulse held at vds_const for every gate step
+    my4200.write(f":PMU:PULSE:TRAIN {drainchan}, 0, {vds_const}")
+
+    # Source: constant pulse held at 0 V for every gate step
+    my4200.write(f":PMU:PULSE:TRAIN {sourcechan}, 0, 0")
+
+    # Pulse timing (must be set identically on both channels)
+    my4200.write(f":PMU:PULSE:TIMES {gatechan}, {period}, {width}, {rise}, {fall}, {delay}")
+    my4200.write(f":PMU:PULSE:TIMES {drainchan}, {period}, {width}, {rise}, {fall}, {delay}")
+    my4200.write(f":PMU:PULSE:TIMES {sourcechan}, {period}, {width}, {rise}, {fall}, {delay}")
+
+    # Current measure ranges
+    my4200.write(f":PMU:MEASURE:RANGE {gatechan}, {gate_range_type}, {gate_range}")
+    my4200.write(f":PMU:MEASURE:RANGE {drainchan}, {drain_range_type}, {drain_range}")
+    my4200.write(f":PMU:MEASURE:RANGE {sourcechan}, {source_range_type}, {source_range}")
+
+    # Measurement window on pulse top (spot mean)
+    my4200.write(f":PMU:TIMES:PIV {gatechan}, {meas_start_pct}, {meas_stop_pct}")
+    my4200.write(f":PMU:TIMES:PIV {drainchan}, {meas_start_pct}, {meas_stop_pct}")
+    my4200.write(f":PMU:TIMES:PIV {sourcechan}, {meas_start_pct}, {meas_stop_pct}")
+
+    # Optional load-line effect compensation on drain (measured, low-impedance side)
+    if use_llec:
+        my4200.write(f":PMU:LLEC:CONFIGURE {drainchan}, 1")
+
+    # Turn outputs on
+    my4200.write(f":PMU:OUTPUT:STATE {gatechan}, 1")
+    my4200.write(f":PMU:OUTPUT:STATE {drainchan}, 1")
+    my4200.write(f":PMU:OUTPUT:STATE {sourcechan}, 1")
+    print("Executing pulsed IDVG test...")
+    my4200.write(":PMU:EXECUTE")
+
+    # Poll for completion instead of SRQ (no DR1 equivalent shown for PMU)
+    while True:
+        status = my4200.query(":PMU:TEST:STATUS?")
+        if int(status) == 0:
+            print("Measurement complete.")
+            break
+        time.sleep(0.2)
+
+    # Retrieve data — gate/drain queries return the same combined buffer,
+    # so query once and split channels out via the parser.
+    source_count = int(my4200.query(f":PMU:DATA:COUNT? {sourcechan}"))
+    gate_count = int(my4200.query(f":PMU:DATA:COUNT? {gatechan}"))
+    drain_count = int(my4200.query(f":PMU:DATA:COUNT? {drainchan}"))
+    source_raw = my4200.query(f":PMU:DATA:GET {sourcechan}")
+    gate_raw = my4200.query(f":PMU:DATA:GET {gatechan}")
+    drain_raw = my4200.query(f":PMU:DATA:GET {drainchan}")
+
+    print(f"Source channel count: {source_count}, Gate channel count: {gate_count}, Drain channel count: {drain_count}")
+    print(f"Source raw data: {source_raw}")
+    print(f"Gate raw data: {gate_raw}")  
+    print(f"Drain raw data: {drain_raw}")  
+
+    source_data_raw = parse_pmu_data(source_raw)
+    gate_data_raw = parse_pmu_data(gate_raw)
+    drain_data_raw = parse_pmu_data(drain_raw)
+
+    if len(source_data_raw) != source_count:
+        print(f"Warning: parsed {len(source_data_raw)} points for source channel, "
+              f"but :PMU:DATA:COUNT? reported {source_count}")
+
+    if len(gate_data_raw) != gate_count:
+        print(f"Warning: parsed {len(gate_data_raw)} points for gate channel, "
+              f"but :PMU:DATA:COUNT? reported {gate_count}")
+        
+    if len(drain_data_raw) != drain_count:
+        print(f"Warning: parsed {len(drain_data_raw)} points for drain channel, "
+              f"but :PMU:DATA:COUNT? reported {drain_count}")
+
+    data = pd.DataFrame({
+        'VG': gate_data_raw['VH'],
+        'IG': gate_data_raw['IH'],
+        'VD': drain_data_raw['VH'],
+        'ID': drain_data_raw['IH'],
+        'VS': source_data_raw['VH'],
+        'IS': source_data_raw['IH'],
+    })
+
+    # Outputs off
+    my4200.write(f":PMU:OUTPUT:STATE {gatechan}, 0")
+    my4200.write(f":PMU:OUTPUT:STATE {drainchan}, 0")
+    my4200.write(f":PMU:OUTPUT:STATE {sourcechan}, 0")
+
+    # Switch RPMs back to SMU mode if desired downstream
+    if check_for_rpms(my4200):
+        my4200.write(f":PMU:RPM:CONFIGURE PMU{gaterpm[0]}-{gaterpm[1]}, 2")
+        my4200.write(f":PMU:RPM:CONFIGURE PMU{drainrpm[0]}-{drainrpm[1]}, 2")
+        my4200.write(f":PMU:RPM:CONFIGURE PMU{sourcerpm[0]}-{sourcerpm[1]}, 2")
+
+    plt.plot(data['VG'], np.abs(data['ID']), label='ID', color='blue', linewidth=2)
+    plt.plot(data['VG'], np.abs(data['IG']), label='IG', color='red', linewidth=2)
+    plt.plot(data['VG'], np.abs(data['IS']), label='IS', color='green', linewidth=2)
+    plt.yscale('log')
+    plt.xlabel('Gate Voltage (V)')
+    plt.ylabel('Current (A)')
+    plt.title('Pulsed ID-VG Sweep (PMU)')
+    plt.legend()
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.show(block=False)
+    plt.pause(20)
+    plt.close()
+    return data
 
 # %% Define an Id-Vds test
 def idvd_sweep_smu(my4200, vgs_start, vgs_stop, vgs_step, vds_start, vds_stop, vds_step,
@@ -417,10 +585,13 @@ def keithley_nvm_dcSweep(my4200, SMU_low="SMU1", SMU_high="SMU2", compCH=1, meas
 
 if __name__ == "__main__":
     my4200 = connect_4200()
-    data = idvg_sweep_smu(my4200, vgs_start=-2, vgs_stop=2, vgs_step=0.05, vds_const=0.05, gatechan=1, sourcechan=2, drainchan=3, gatecomp=0.1, sourcecomp=0.1, draincomp=0.1, gaterange="1e-6", sourcerange="1e-6", drainrange="1e-6", dual_sweep=1, integ_time=3)
+
+    # data = idvg_sweep_smu(my4200, vgs_start=-2, vgs_stop=2, vgs_step=0.05, vds_const=0.05, gatechan=1, sourcechan=2, drainchan=3, gatecomp=0.1, sourcecomp=0.1, draincomp=0.1, gaterange="1e-6", sourcerange="1e-6", drainrange="1e-6", dual_sweep=1, integ_time=3)
+    # print(data)
+
+    data = idvg_sweep_pmu(my4200, vgs_start=-2, vgs_stop=2, vgs_step=0.1, vds_const=0.1, gatechan=1, sourcechan=2, drainchan=3, dual_sweep=1)
     print(data)
-    data = idvg_sweep_pmu(my4200)
-    print(data)
+
     disconnect_4200(my4200)
     
     
