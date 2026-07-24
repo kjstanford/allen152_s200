@@ -140,7 +140,7 @@ def parse_semicolon_data_to_df(**data_dict):
 
 
 # %% Define an Id-Vgs test
-def idvg_sweep_smu(my4200,vgs_start, vgs_stop, vgs_step, vds_const, gatechan, sourcechan, drainchan, gatecomp, sourcecomp, draincomp, gaterange, sourcerange, drainrange, dual_sweep = 0, integ_time = 3, hold_time = 0, delay_time = 0.001, standby = 1, resolution = 5):
+def idvg_sweep_smu(my4200,vgs_start, vgs_stop, vgs_step, vds_const, gatechan, sourcechan, drainchan, gatecomp, sourcecomp, draincomp, gaterange, sourcerange, drainrange, dual_sweep = 0, integ_time = 3, hold_time = 0, delay_time = 0.001, standby = 1, resolution = 5, fig_save_path=None):
     
     print("Setting up IDVG test...")
     # Clear all readings from buffer
@@ -231,7 +231,12 @@ def idvg_sweep_smu(my4200,vgs_start, vgs_stop, vgs_step, vds_const, gatechan, so
     plt.title('ID-VG Sweep')
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.show(block=False)
-    plt.pause(20)
+    if fig_save_path is not None:
+        plt.savefig(fig_save_path, dpi=300, bbox_inches='tight')
+        print(f"Figure saved to {fig_save_path}")
+        plt.pause(1)
+    else:
+        plt.pause(20)
     plt.close()
 
     return data
@@ -266,15 +271,7 @@ def parse_pmu_data(raw_string):
     return pd.DataFrame(records)
 
 
-def idvg_sweep_pmu(my4200, vgs_start, vgs_stop, vgs_step, vds_const,
-                    gatechan, drainchan, sourcechan,
-                    gate_load=1e6, drain_load=1e6, source_load=1e6,
-                    gate_range_type=1, gate_range=100e-9,
-                    drain_range_type=1, drain_range=100e-9,
-                    source_range_type=1, source_range=100e-9,
-                    period=1e-3, width=5e-4, rise=1e-5, fall=1e-5, delay=1e-4,
-                    meas_start_pct=0.75, meas_stop_pct=0.9,
-                    vgs_base=0.0, dual_sweep=0, use_llec=True):
+def idvg_sweep_pmu(my4200, vgs_start, vgs_stop, vgs_step, vds_const, gatechan, drainchan, sourcechan, gate_load=1e6, drain_load=1e6, source_load=1e6, gate_range_type=1, gate_range=100e-9, drain_range_type=1, drain_range=100e-9, source_range_type=1, source_range=100e-9, period=1e-3, width=5e-4, rise=1e-5, fall=1e-5, delay=1e-4, meas_start_pct=0.75, meas_stop_pct=0.9, vgs_base=0.0, dual_sweep=0, use_llec=True, fig_save_path=None):
 
     print("Setting up pulsed IDVG test (PMU)...")
 
@@ -403,7 +400,12 @@ def idvg_sweep_pmu(my4200, vgs_start, vgs_stop, vgs_step, vds_const,
     plt.legend()
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.show(block=False)
-    plt.pause(20)
+    if fig_save_path is not None:
+        plt.savefig(fig_save_path, dpi=300, bbox_inches='tight')
+        print(f"Figure saved to {fig_save_path}")
+        plt.pause(1)
+    else:
+        plt.pause(20)
     plt.close()
     return data
 
