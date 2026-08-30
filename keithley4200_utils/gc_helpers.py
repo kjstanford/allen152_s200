@@ -332,6 +332,7 @@ def _plot_sweep(data, x_column, forward_count, title, show_plot):
     figure.tight_layout()
     if show_plot:
         plt.show(block=False)
+        plt.pause(5)
     return figure
 
 
@@ -359,6 +360,7 @@ def _plot_retention(data, state, show_plot):
     figure.tight_layout()
     if show_plot:
         plt.show(block=False)
+        plt.pause(5)
     return figure
 
 
