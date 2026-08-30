@@ -343,7 +343,7 @@ def _plot_sweep(
     return figure
 
 
-def _plot_retention(data, state, show_plot, plot_path=None):
+def _plot_retention(data, state, show_plot, plot_path=None, title=None):
     figure, axis = plt.subplots()
     colors = {
         "RWL": "tab:blue",
@@ -361,7 +361,7 @@ def _plot_retention(data, state, show_plot, plot_path=None):
     axis.set_yscale("log")
     axis.set_xlabel("Time (s)")
     axis.set_ylabel("Absolute current (A)")
-    axis.set_title(f"Gain-cell state-{state} retention")
+    axis.set_title(title or f"Gain-cell state-{state} retention")
     axis.grid(True, which="both", linestyle=":", linewidth=0.5)
     axis.legend()
     figure.tight_layout()
@@ -663,8 +663,150 @@ def gc_retention_test(
     return data
 
 
+def gc_retention_test_active_low_rwl(
+    my4200,
+    state,
+    vdata0,
+    vdata1,
+    vhold,
+    vboost,
+    vdd,
+    tretention,
+    vss=0.0,
+    *,
+    sample_interval=1.0,
+    conditioning_time=2.0,
+    channels=None,
+    compliances=None,
+    current_ranges=None,
+    integration_time=3,
+    resolution=5,
+    manage_rpms=True,
+    show_plot=True,
+    plot_path=None,
+):
+    """Run the gain-cell retention test with an active-low read word line.
+
+    State 1 is programmed with WBL=vdata1 and retained with WBL=vdata0;
+    state 0 is programmed with WBL=vdata0 and retained with WBL=vdata1.
+    During both conditioning stages RWL and RBL are held at ``vdd``. During
+    retention RWL switches to ``vss`` while RBL remains at ``vdd``.
+    """
+    state = _validate_state(state)
+    tretention = float(tretention)
+    sample_interval = float(sample_interval)
+    if not math.isfinite(tretention) or tretention < 0.01:
+        raise ValueError("tretention must be finite and at least 0.01 s")
+    if not math.isfinite(sample_interval) or not 0.01 <= sample_interval <= 10:
+        raise ValueError("sample_interval must be between 0.01 and 10 s")
+
+    interval_count = max(1, round(tretention / sample_interval))
+    actual_interval = tretention / interval_count
+    if not 0.01 <= actual_interval <= 10:
+        raise ValueError(
+            "The requested retention duration cannot be sampled within KXCI's "
+            "0.01-to-10 s interval limits"
+        )
+    number_of_readings = interval_count + 1
+    if number_of_readings > MAX_POINTS:
+        raise ValueError(
+            f"Retention test requires {number_of_readings} readings; KXCI "
+            f"supports at most {MAX_POINTS}. Increase sample_interval."
+        )
+
+    channels = _validate_channels(channels)
+    compliances = _terminal_values(
+        compliances, DEFAULT_COMPLIANCE, "compliances"
+    )
+    ranges = _terminal_values(
+        current_ranges, DEFAULT_CURRENT_RANGE, "current_ranges"
+    )
+    programmed_voltage = vdata1 if state else vdata0
+    retention_voltage = vdata0 if state else vdata1
+    rpm_present = manage_rpms and check_for_rpms(my4200)
+
+    try:
+        if rpm_present:
+            _configure_rpms(my4200, channels, smu_mode=True)
+        _run_constant_bias(
+            my4200,
+            {
+                "WWL": vboost,
+                "WBL": programmed_voltage,
+                "RWL": vdd,
+                "RBL": vdd,
+            },
+            conditioning_time,
+            channels,
+            compliances,
+            ranges,
+            integration_time,
+            resolution,
+        )
+        _run_constant_bias(
+            my4200,
+            {
+                "WWL": vhold,
+                "WBL": programmed_voltage,
+                "RWL": vdd,
+                "RBL": vdd,
+            },
+            conditioning_time,
+            channels,
+            compliances,
+            ranges,
+            integration_time,
+            resolution,
+        )
+        data = _execute_retention_sampling(
+            my4200,
+            {
+                "WWL": vhold,
+                "WBL": retention_voltage,
+                "RWL": vss,
+                "RBL": vdd,
+            },
+            number_of_readings,
+            actual_interval,
+            channels,
+            compliances,
+            ranges,
+            integration_time,
+            resolution,
+        )
+    finally:
+        _turn_off_channels(my4200, channels)
+        if rpm_present:
+            _configure_rpms(my4200, channels, smu_mode=False)
+
+    data.attrs.update(
+        {
+            "state": state,
+            "retention_time": tretention,
+            "sample_interval": actual_interval,
+            "rwl_active_level": "low",
+        }
+    )
+    _plot_retention(
+        data,
+        state,
+        show_plot,
+        plot_path,
+        title=f"Gain-cell state-{state} retention (active-low RWL)",
+    )
+    return data
+
+
 # Explicit alias makes the naming convenient in measurement notebooks.
 retention_test = gc_retention_test
+retention_test_active_low_rwl = gc_retention_test_active_low_rwl
 
 
-__all__ = ["wbl_sweep", "wwl_sweep", "gc_retention_test", "retention_test"]
+__all__ = [
+    "wbl_sweep",
+    "wwl_sweep",
+    "gc_retention_test",
+    "gc_retention_test_active_low_rwl",
+    "retention_test",
+    "retention_test_active_low_rwl",
+]
