@@ -19,7 +19,7 @@ try:
         "vhold": -1.0,
         "vdd": 2.0,
         "vss": 0.0,
-        "compliances": 100e-6,
+        "compliances": 10e-3,
         "current_ranges": "1e-6",
         "integration_time": 1,
         "show_plot": True,
@@ -61,25 +61,25 @@ try:
     print(data)
     data.to_csv("wwl_test.csv", index=False)
 
-    # data = gc_retention_test(
-    #     smu,
-    #     state=1,
-    #     vdata0=common["vdata0"],
-    #     vdata1=common["vdata1"],
-    #     vhold=common["vhold"],
-    #     vboost=common["vboost"],
-    #     vdd=common["vdd"],
-    #     vss=common["vss"],
-    #     tretention=10,
-    #     sample_interval=0.5,
-    #     compliances=common["compliances"],
-    #     current_ranges=common["current_ranges"],
-    #     integration_time=common["integration_time"],
-    #     show_plot=common["show_plot"],
-    # )
+    data = gc_retention_test(
+        smu,
+        state=1,
+        vdata0=common["vdata0"],
+        vdata1=common["vdata1"],
+        vhold=common["vhold"],
+        vboost=common["vboost"],
+        vdd=common["vdd"],
+        vss=common["vss"],
+        tretention=500,
+        sample_interval=1.0,
+        compliances=common["compliances"],
+        current_ranges=common["current_ranges"],
+        integration_time=common["integration_time"],
+        show_plot=common["show_plot"],
+    )
 
-    # print(data)
-    # data.to_csv("retention_test.csv", index=False)
+    print(data)
+    data.to_csv("retention_test.csv", index=False)
 
 finally:
     disconnect_4200(smu)

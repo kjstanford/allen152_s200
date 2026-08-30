@@ -114,9 +114,8 @@ def _parse_kxci_data(data_string):
     return values
 
 
-def _get_data(my4200, name, timestamp=False):
-    suffix = "T" if timestamp else ""
-    return _parse_kxci_data(my4200.query(f"DO '{name}{suffix}'"))
+def _get_data(my4200, name):
+    return _parse_kxci_data(my4200.query(f"DO '{name}'"))
 
 
 def _define_channels(my4200, channels, swept_terminal=None):
@@ -146,16 +145,20 @@ def _start_measurement(my4200, message):
     wait_for_stb(my4200)
 
 
-def _read_gc_data(my4200, voltage_terminals=(), include_time=False):
+def _read_gc_data(my4200, voltage_terminals=(), sample_interval=None):
     columns = {
         f"V{terminal}": _get_data(my4200, f"V{terminal}")
         for terminal in voltage_terminals
     }
     for terminal in TERMINALS:
         columns[f"I{terminal}"] = _get_data(my4200, f"I{terminal}")
-    if include_time:
-        # Any measured channel has the same sampling timestamps.
-        columns["Time"] = _get_data(my4200, "IRWL", timestamp=True)
+
+    if sample_interval is not None:
+        number_of_samples = len(columns["IRWL"])
+        # Some KXCI/firmware combinations do not respond to the documented
+        # DO '<name>T' timestamp query. Use the programmed IN schedule so a
+        # completed retention measurement is not lost to a VISA timeout.
+        columns["Time"] = np.arange(number_of_samples) * sample_interval
 
     lengths = {name: len(values) for name, values in columns.items()}
     if len(set(lengths.values())) != 1:
@@ -295,7 +298,7 @@ def _execute_retention_sampling(
     my4200.write(f"IN {sample_interval:.9g}")
     my4200.write("WT 0")
     _start_measurement(my4200, "Executing gain-cell retention sampling...")
-    return _read_gc_data(my4200, include_time=True)
+    return _read_gc_data(my4200, sample_interval=sample_interval)
 
 
 def _plot_sweep(data, x_column, forward_count, title, show_plot):
