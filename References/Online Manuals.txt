@@ -1,0 +1,2 @@
+Keithley 4200A - https://www.tek.com/en/support/datasheets-manuals-software-downloads?series=Keithley%204200A-SCS%20Parameter%20Analyzer&type=manual
+Keitheley KXCI & Python github - https://github.com/tektronix/keithley/tree/main/Instrument_Examples/Model_4200A

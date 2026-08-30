@@ -138,7 +138,6 @@ def parse_semicolon_data_to_df(**data_dict):
     
     return df
 
-
 # %% Define an Id-Vgs test
 def idvg_sweep_smu(my4200,vgs_start, vgs_stop, vgs_step, vds_const, gatechan, sourcechan, drainchan, gatecomp, sourcecomp, draincomp, gaterange, sourcerange, drainrange, dual_sweep = 0, integ_time = 3, hold_time = 0, delay_time = 0.001, standby = 1, resolution = 5):
     
@@ -235,7 +234,6 @@ def idvg_sweep_smu(my4200,vgs_start, vgs_stop, vgs_step, vds_const, gatechan, so
     plt.close()
 
     return data
-
 
 # %% Define an Id-Vds test
 def idvd_sweep_smu(my4200, vgs_start, vgs_stop, vgs_step, vds_start, vds_stop, vds_step,
