@@ -301,7 +301,9 @@ def _execute_retention_sampling(
     return _read_gc_data(my4200, sample_interval=sample_interval)
 
 
-def _plot_sweep(data, x_column, forward_count, title, show_plot):
+def _plot_sweep(
+    data, x_column, forward_count, title, show_plot, plot_path=None
+):
     figure, axis = plt.subplots()
     colors = {
         "RWL": "tab:blue",
@@ -333,13 +335,15 @@ def _plot_sweep(data, x_column, forward_count, title, show_plot):
     axis.grid(True, which="both", linestyle=":", linewidth=0.5)
     axis.legend()
     figure.tight_layout()
+    if plot_path is not None:
+        figure.savefig(plot_path, dpi=300, bbox_inches="tight")
     if show_plot:
         plt.show(block=False)
         plt.pause(5)
     return figure
 
 
-def _plot_retention(data, state, show_plot):
+def _plot_retention(data, state, show_plot, plot_path=None):
     figure, axis = plt.subplots()
     colors = {
         "RWL": "tab:blue",
@@ -361,6 +365,8 @@ def _plot_retention(data, state, show_plot):
     axis.grid(True, which="both", linestyle=":", linewidth=0.5)
     axis.legend()
     figure.tight_layout()
+    if plot_path is not None:
+        figure.savefig(plot_path, dpi=300, bbox_inches="tight")
     if show_plot:
         plt.show(block=False)
         plt.pause(5)
@@ -385,6 +391,7 @@ def wbl_sweep(
     resolution=5,
     manage_rpms=True,
     show_plot=True,
+    plot_path=None,
 ):
     """Sweep WBL from ``vdata0`` to ``vdata1`` and back.
 
@@ -423,7 +430,14 @@ def wbl_sweep(
             _configure_rpms(my4200, channels, smu_mode=False)
 
     data.attrs["forward_points"] = forward_count
-    _plot_sweep(data, "VWBL", forward_count, "Gain-cell WBL sweep", show_plot)
+    _plot_sweep(
+        data,
+        "VWBL",
+        forward_count,
+        "Gain-cell WBL sweep",
+        show_plot,
+        plot_path,
+    )
     return data
 
 
@@ -448,6 +462,7 @@ def wwl_sweep(
     resolution=5,
     manage_rpms=True,
     show_plot=True,
+    plot_path=None,
 ):
     """Condition the gain cell, then sweep WWL from hold to boost and back.
 
@@ -465,6 +480,7 @@ def wwl_sweep(
     )
     values, forward_count = _bidirectional_values(vhold, vboost, vwwl_step)
     data_voltage = vdata1 if state else vdata0
+    initial_voltage = vdata0 if state else vdata1
     rpm_present = manage_rpms and check_for_rpms(my4200)
 
     try:
@@ -472,7 +488,7 @@ def wwl_sweep(
             _configure_rpms(my4200, channels, smu_mode=True)
         _run_constant_bias(
             my4200,
-            {"WWL": vboost, "WBL": vdata0, "RWL": vss, "RBL": vss},
+            {"WWL": vboost, "WBL": initial_voltage, "RWL": vss, "RBL": vss},
             conditioning_time,
             channels,
             compliances,
@@ -482,7 +498,7 @@ def wwl_sweep(
         )
         _run_constant_bias(
             my4200,
-            {"WWL": vhold, "WBL": vdata0, "RWL": vss, "RBL": vss},
+            {"WWL": vhold, "WBL": initial_voltage, "RWL": vss, "RBL": vss},
             conditioning_time,
             channels,
             compliances,
@@ -515,6 +531,7 @@ def wwl_sweep(
         forward_count,
         f"Gain-cell WWL sweep (state {state})",
         show_plot,
+        plot_path,
     )
     return data
 
@@ -539,6 +556,7 @@ def gc_retention_test(
     resolution=5,
     manage_rpms=True,
     show_plot=True,
+    plot_path=None,
 ):
     """Program a gain-cell state and sample its terminal currents over time.
 
@@ -641,7 +659,7 @@ def gc_retention_test(
             "sample_interval": actual_interval,
         }
     )
-    _plot_retention(data, state, show_plot)
+    _plot_retention(data, state, show_plot, plot_path)
     return data
 
 

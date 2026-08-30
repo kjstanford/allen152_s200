@@ -37,6 +37,7 @@ try:
         current_ranges=common["current_ranges"],
         integration_time=common["integration_time"],
         show_plot=common["show_plot"],
+        plot_path="wbl_test.png",
     )
 
     print(data)
@@ -56,10 +57,31 @@ try:
         current_ranges=common["current_ranges"],
         integration_time=common["integration_time"],
         show_plot=common["show_plot"],
+        plot_path="wwl_test_s1.png",
     )
 
     print(data)
-    data.to_csv("wwl_test.csv", index=False)
+    data.to_csv("wwl_test_s1.csv", index=False)
+
+    data = wwl_sweep(
+        smu,
+        state=0,
+        vdata0=common["vdata0"],
+        vdata1=common["vdata1"],
+        vhold=common["vhold"],
+        vboost=common["vboost"],
+        vwwl_step=0.05,
+        vdd=common["vdd"],
+        vss=common["vss"],
+        compliances=common["compliances"],
+        current_ranges=common["current_ranges"],
+        integration_time=common["integration_time"],
+        show_plot=common["show_plot"],
+        plot_path="wwl_test_s0.png",
+    )
+    
+    print(data)
+    data.to_csv("wwl_test_s0.csv", index=False)
 
     data = gc_retention_test(
         smu,
@@ -76,10 +98,32 @@ try:
         current_ranges=common["current_ranges"],
         integration_time=common["integration_time"],
         show_plot=common["show_plot"],
+        plot_path="retention_test_s1.png",
     )
 
     print(data)
-    data.to_csv("retention_test.csv", index=False)
+    data.to_csv("retention_test_s1.csv", index=False)
+
+    data = gc_retention_test(
+        smu,
+        state=0,
+        vdata0=common["vdata0"],
+        vdata1=common["vdata1"],
+        vhold=common["vhold"],
+        vboost=common["vboost"],
+        vdd=common["vdd"],
+        vss=common["vss"],
+        tretention=500,
+        sample_interval=1.0,
+        compliances=common["compliances"],
+        current_ranges=common["current_ranges"],
+        integration_time=common["integration_time"],
+        show_plot=common["show_plot"],
+        plot_path="retention_test_s0.png",
+    )
+
+    print(data)
+    data.to_csv("retention_test_s0.csv", index=False)
 
 finally:
     disconnect_4200(smu)
