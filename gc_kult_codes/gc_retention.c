@@ -119,6 +119,7 @@ Other nonzero value
 #define GC_MAX_BREAKPOINTS (8 + 4 * GC_MAX_RETENTION_POINTS)
 #define GC_MAX_SEGMENTS (GC_MAX_BREAKPOINTS - 1)
 #define GC_MEAS_SPOT_MEAN_DISCRETE 1UL
+#define GC_TIME_RESOLUTION 10e-9
 
 static double gc_pulse_value(
     double t,
@@ -151,6 +152,7 @@ static int gc_is_read_high_segment(
 
 static void gc_add_time(double *times, int *count, double value);
 static void gc_sort_times(double *times, int count);
+static double gc_quantize_time(double value);
 
 
 /* USRLIB MODULE MAIN FUNCTION */
@@ -354,7 +356,13 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
         double t0 = breakpoints[i];
         double t1 = breakpoints[i + 1];
 
-        segment_time[i] = t1 - t0;
+        /*
+         * Breakpoints are absolute times. At retention times of several
+         * seconds, subtracting them can make a nominal 20 ns edge appear
+         * infinitesimally shorter due to floating-point cancellation.
+         * Program durations on the PMU's native 10 ns timing grid.
+         */
+        segment_time[i] = gc_quantize_time(t1 - t0);
 
         if (segment_time[i] < 20e-9)
         {
@@ -676,4 +684,12 @@ static void gc_sort_times(double *times, int count)
             }
         }
     }
+}
+
+
+/* Round a duration to the 4225-PMU Segment ARB 10 ns timing grid. */
+static double gc_quantize_time(double value)
+{
+    return floor(value / GC_TIME_RESOLUTION + 0.5) *
+           GC_TIME_RESOLUTION;
 }
