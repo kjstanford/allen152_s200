@@ -59,18 +59,21 @@ Executes an alternating gain-cell transient measurement using two
 
 After one initial `tdelay`, the following cycle is repeated `n` times:
 
-1. Write data 1: WBL transitions to `vdata1` while WWL pulses from
-   `vhold` to `vboost`.
+1. Write data 1: WBL pulses from `vdata0` to `vdata1` while WWL pulses
+   from `vhold` to `vboost`, then WBL returns to `vdata0`.
 2. Hold for `thold`, then pulse RWL from `vss` to `vdd` to read data 1.
 3. Hold for `thold`.
-4. Write data 0: WBL transitions to `vdata0` while WWL pulses from
-   `vhold` to `vboost`.
+4. Write data 0: WBL pulses from `vdata1` to `vdata0` while WWL pulses
+   from `vhold` to `vboost`, then WBL returns to `vdata1`.
 5. Hold for `thold`, then pulse RWL from `vss` to `vdd` to read data 0.
 6. Hold for `thold` before the next cycle.
 
 WWL and WBL transitions have rise/fall time `trf`. Each WWL high level
-lasts `twrite`; each RWL high level lasts `tread`. RBL remains at `vss`.
-Its current is sampled throughout the complete waveform.
+lasts `twrite`. Each WBL data level lasts `twrite + 2*trf`, so WBL
+returns to its baseline exactly `2*trf` after WWL returns to `vhold`.
+Each read starts only after that WBL return and the requested `thold`.
+Each RWL high level lasts `tread`. RBL remains at `vss`; its current is
+sampled throughout the complete waveform.
 
 Use `tdelay = 0` to omit the initial delay. A nonzero `tdelay` must be at
 least 60 ns because the delay is represented by the three-segment minimum
@@ -108,7 +111,7 @@ Other nonzero value
 #include "keithley.h"
 #include <math.h>
 
-#define GC_MAX_BREAKPOINTS 20
+#define GC_MAX_BREAKPOINTS 28
 #define GC_MAX_SEGMENTS (GC_MAX_BREAKPOINTS - 1)
 
 static double gc_pulse_value(
@@ -135,8 +138,13 @@ static double gc_data_value(
     double vdata0,
     double vdata1,
     double write1_start,
+    double write1_end,
+    double prepare0_start,
     double write0_start,
-    double transition_time);
+    double write0_end,
+    double reset_start,
+    double transition_time,
+    double write_high_time);
 
 static void gc_add_time(double *times, int *count, double value);
 static void gc_sort_times(double *times, int count);
@@ -203,21 +211,30 @@ int gc_transient_rw( double vhold, double vboost, double vdata0, double vdata1, 
     double write1_rise_end;
     double write1_high_end;
     double write1_end;
+    double wbl1_high_end;
+    double wbl1_end;
 
     double read1_start;
     double read1_rise_end;
     double read1_high_end;
     double read1_end;
 
+    double prepare0_start;
+    double prepare0_end;
+
     double write0_start;
     double write0_rise_end;
     double write0_high_end;
     double write0_end;
+    double wbl0_high_end;
+    double wbl0_end;
 
     double read0_start;
     double read0_rise_end;
     double read0_high_end;
     double read0_end;
+    double reset_start;
+    double reset_end;
     double cycle_time;
 
     /* Segment ARB durations must be zero (omitted) or at least 20 ns. */
@@ -251,39 +268,57 @@ int gc_transient_rw( double vhold, double vboost, double vdata0, double vdata1, 
     write1_rise_end = write1_start + trf;
     write1_high_end = write1_rise_end + twrite;
     write1_end      = write1_high_end + trf;
+    wbl1_high_end   = write1_rise_end + twrite + 2.0 * trf;
+    wbl1_end        = wbl1_high_end + trf;
 
-    read1_start     = write1_end + thold;
+    read1_start     = wbl1_end + thold;
     read1_rise_end  = read1_start + trf;
     read1_high_end  = read1_rise_end + tread;
     read1_end       = read1_high_end + trf;
 
-    write0_start    = read1_end + thold;
+    /* Prepare the state-0 baseline after the state-1 read. */
+    prepare0_start  = read1_end;
+    prepare0_end    = prepare0_start + trf;
+
+    write0_start    = prepare0_end + thold;
     write0_rise_end = write0_start + trf;
     write0_high_end = write0_rise_end + twrite;
     write0_end      = write0_high_end + trf;
+    wbl0_high_end   = write0_rise_end + twrite + 2.0 * trf;
+    wbl0_end        = wbl0_high_end + trf;
 
-    read0_start     = write0_end + thold;
+    read0_start     = wbl0_end + thold;
     read0_rise_end  = read0_start + trf;
     read0_high_end  = read0_rise_end + tread;
     read0_end       = read0_high_end + trf;
-    cycle_time      = read0_end + thold;
+
+    /* Restore the state-1 baseline before looping the cycle. */
+    reset_start     = read0_end;
+    reset_end       = reset_start + trf;
+    cycle_time      = reset_end + thold;
 
     gc_add_time(breakpoints, &point_count, 0.0);
     gc_add_time(breakpoints, &point_count, write1_rise_end);
     gc_add_time(breakpoints, &point_count, write1_high_end);
     gc_add_time(breakpoints, &point_count, write1_end);
+    gc_add_time(breakpoints, &point_count, wbl1_high_end);
+    gc_add_time(breakpoints, &point_count, wbl1_end);
     gc_add_time(breakpoints, &point_count, read1_start);
     gc_add_time(breakpoints, &point_count, read1_rise_end);
     gc_add_time(breakpoints, &point_count, read1_high_end);
     gc_add_time(breakpoints, &point_count, read1_end);
+    gc_add_time(breakpoints, &point_count, prepare0_end);
     gc_add_time(breakpoints, &point_count, write0_start);
     gc_add_time(breakpoints, &point_count, write0_rise_end);
     gc_add_time(breakpoints, &point_count, write0_high_end);
     gc_add_time(breakpoints, &point_count, write0_end);
+    gc_add_time(breakpoints, &point_count, wbl0_high_end);
+    gc_add_time(breakpoints, &point_count, wbl0_end);
     gc_add_time(breakpoints, &point_count, read0_start);
     gc_add_time(breakpoints, &point_count, read0_rise_end);
     gc_add_time(breakpoints, &point_count, read0_high_end);
     gc_add_time(breakpoints, &point_count, read0_end);
+    gc_add_time(breakpoints, &point_count, reset_end);
     gc_add_time(breakpoints, &point_count, cycle_time);
 
     gc_sort_times(breakpoints, point_count);
@@ -335,9 +370,15 @@ int gc_transient_rw( double vhold, double vboost, double vdata0, double vdata1, 
             trf, twrite, trf);
 
         wbl_start[i] = gc_data_value(
-            t0, vdata0, vdata1, write1_start, write0_start, trf);
+            t0, vdata0, vdata1,
+            write1_start, wbl1_end,
+            prepare0_start, write0_start, wbl0_end, reset_start,
+            trf, twrite + 2.0 * trf);
         wbl_stop[i] = gc_data_value(
-            t1, vdata0, vdata1, write1_start, write0_start, trf);
+            t1, vdata0, vdata1,
+            write1_start, wbl1_end,
+            prepare0_start, write0_start, wbl0_end, reset_start,
+            trf, twrite + 2.0 * trf);
 
         rwl_start[i] = gc_two_pulse_value(
             t0, vss, vdd, read1_start, read0_start,
@@ -631,36 +672,61 @@ static double gc_two_pulse_value(
 }
 
 
-/* WBL changes to data 1 for the first write and data 0 for the second. */
+/*
+ * Return the alternating WBL waveform.
+ *
+ * Write 1 pulses vdata0 -> vdata1 -> vdata0. After the state-1 read,
+ * WBL is prepared at vdata1. Write 0 then pulses
+ * vdata1 -> vdata0 -> vdata1. After the state-0 read, WBL is restored
+ * to vdata0 so the complete cycle can loop seamlessly.
+ */
 static double gc_data_value(
     double t,
     double vdata0,
     double vdata1,
     double write1_start,
+    double write1_end,
+    double prepare0_start,
     double write0_start,
-    double transition_time)
+    double write0_end,
+    double reset_start,
+    double transition_time,
+    double write_high_time)
 {
-    double write1_end = write1_start + transition_time;
-    double write0_end = write0_start + transition_time;
+    double prepare0_end = prepare0_start + transition_time;
+    double reset_end = reset_start + transition_time;
 
-    if (t <= write1_start)
+    if (t <= write1_end)
+        return gc_pulse_value(
+            t, vdata0, vdata1, write1_start,
+            transition_time, write_high_time, transition_time);
+
+    if (t <= prepare0_start)
         return vdata0;
 
-    if (t < write1_end)
+    if (t < prepare0_end)
     {
         return vdata0 +
                (vdata1 - vdata0) *
-               (t - write1_start) / transition_time;
+               (t - prepare0_start) / transition_time;
     }
 
     if (t <= write0_start)
         return vdata1;
 
-    if (t < write0_end)
+    if (t <= write0_end)
+        return gc_pulse_value(
+            t, vdata1, vdata0, write0_start,
+            transition_time, write_high_time, transition_time);
+
+    if (t <= reset_start)
+        return vdata1;
+
+    if (t < reset_end)
     {
         return vdata1 +
                (vdata0 - vdata1) *
-               (t - write0_start) / transition_time;
+               (t - reset_start) / transition_time;
     }
 
     return vdata0;
