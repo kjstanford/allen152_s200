@@ -2,7 +2,7 @@
 
     MODULE NAME: gc_retention
     MODULE RETURN TYPE: int
-    NUMBER OF PARMS: 29
+    NUMBER OF PARMS: 31
     ARGUMENTS:
         vhold,                double, Input,  0.0,   -40.0,  40.0
         vboost,               double, Input,  2.0,   -40.0,  40.0
@@ -14,6 +14,8 @@
         trf,                  double, Input,  100e-9,20e-9,  40.0
         twrite,               double, Input,  1e-6,  20e-9,  40.0
         tread,                double, Input,  1e-6,  20e-9,  40.0
+        measure_start_fraction,double,Input,  0.2,   0.0,    1.0
+        measure_stop_fraction,double, Input,  0.8,   0.0,    1.0
         state,                int,    Input,  1,     0,      1
         retention_times,      D_ARRAY_T, Input, , ,
         retention_times_size, int,    Input,  10,    1,      256
@@ -73,17 +75,21 @@ pulses from `vss` to `vdd`, remains high for `tread`, and returns to
 `vss`. The times must be nonnegative and ordered so read pulses do not
 overlap. `retention_times_size` is the number of requested reads.
 
-Only the RWL-high portion of each read is sampled. Long unmeasured
-retention intervals therefore do not fill the PMU data buffer.
+One spot-mean value is returned for each read. The averaging window lies
+within the flat RWL-high interval and is selected by
+`measure_start_fraction` and `measure_stop_fraction`. For example, values
+of 0.2 and 0.8 average from 20% through 80% of `tread`. The fractions must
+satisfy `0 <= start < stop <= 1`. Long unmeasured retention intervals do
+not fill the PMU data buffer.
 
 Outputs
 -------
 
 `WWL_V`, `WBL_V`, `RWL_V`
-: Measured terminal voltages during every RWL-high read window.
+: Spot-mean terminal voltages for every RWL-high read window.
 
 `RBL_I`
-: Measured RBL current during every RWL-high read window.
+: Spot-mean RBL current for every RWL-high read window.
 
 `Time`
 : Absolute synchronized PMU timestamps. Subtract the write/initial-delay
@@ -112,6 +118,7 @@ Other nonzero value
 #define GC_MAX_RETENTION_POINTS 256
 #define GC_MAX_BREAKPOINTS (8 + 4 * GC_MAX_RETENTION_POINTS)
 #define GC_MAX_SEGMENTS (GC_MAX_BREAKPOINTS - 1)
+#define GC_MEAS_SPOT_MEAN_DISCRETE 1UL
 
 static double gc_pulse_value(
     double t,
@@ -147,7 +154,7 @@ static void gc_sort_times(double *times, int count);
 
 
 /* USRLIB MODULE MAIN FUNCTION */
-int gc_retention( double vhold, double vboost, double vdata0, double vdata1, double vss, double vdd, double tdelay, double trf, double twrite, double tread, int state, double *retention_times, int retention_times_size, double sample_rate, double voltage_range, double current_range, double dut_resistance, char *PMU_ID1, char *PMU_ID2, double *WWL_V, int WWL_V_size, double *WBL_V, int WBL_V_size, double *RWL_V, int RWL_V_size, double *RBL_I, int RBL_I_size, double *Time, int Time_size )
+int gc_retention( double vhold, double vboost, double vdata0, double vdata1, double vss, double vdd, double tdelay, double trf, double twrite, double tread, double measure_start_fraction, double measure_stop_fraction, int state, double *retention_times, int retention_times_size, double sample_rate, double voltage_range, double current_range, double dut_resistance, char *PMU_ID1, char *PMU_ID2, double *WWL_V, int WWL_V_size, double *WBL_V, int WBL_V_size, double *RWL_V, int RWL_V_size, double *RBL_I, int RBL_I_size, double *Time, int Time_size )
 {
 /* USRLIB MODULE CODE */
 
@@ -184,6 +191,7 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
     double elapsed_time;
     double expected_points;
     double gap;
+    double measure_window;
 
     double write_start;
     double wwl_rise_end;
@@ -221,6 +229,27 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
     if (!(sample_rate > 0.0) || sample_rate > 200e6)
     {
         printf("gc_retention: sample_rate must be > 0 and <= 200e6.");
+        return -4;
+    }
+
+    if (!(measure_start_fraction >= 0.0) ||
+        !(measure_stop_fraction <= 1.0) ||
+        !(measure_start_fraction < measure_stop_fraction))
+    {
+        printf(
+            "gc_retention: measurement fractions must satisfy "
+            "0 <= start < stop <= 1.");
+        return -4;
+    }
+
+    measure_window =
+        (measure_stop_fraction - measure_start_fraction) * tread;
+
+    if (measure_window < 10e-9 || measure_window * sample_rate < 1.0)
+    {
+        printf(
+            "gc_retention: spot-mean window must be at least 10 ns "
+            "and contain at least one sample.");
         return -4;
     }
 
@@ -304,9 +333,8 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
         return -6;
     }
 
-    /* Only one waveform window, of duration tread, is returned per read. */
-    expected_points = (double)retention_times_size *
-                      (ceil(tread * sample_rate) + 2.0);
+    /* Spot mean returns exactly one averaged value for each read. */
+    expected_points = (double)retention_times_size;
 
     if (expected_points > (double)WWL_V_size ||
         expected_points > (double)WBL_V_size ||
@@ -371,9 +399,11 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
                 retention_times, retention_times_size,
                 trf, tread))
         {
-            measure_type[i] = PULSE_MEAS_WFM_PER;
-            measure_start[i] = 0.0;
-            measure_stop[i] = segment_time[i];
+            measure_type[i] = GC_MEAS_SPOT_MEAN_DISCRETE;
+            measure_start[i] =
+                measure_start_fraction * segment_time[i];
+            measure_stop[i] =
+                measure_stop_fraction * segment_time[i];
         }
         else
         {
