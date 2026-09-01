@@ -120,6 +120,7 @@ Other nonzero value
 #define GC_MAX_SEGMENTS (GC_MAX_BREAKPOINTS - 1)
 #define GC_MEAS_SPOT_MEAN_DISCRETE 1UL
 #define GC_TIME_RESOLUTION 10e-9
+#define GC_TIME_TOLERANCE 1e-9
 
 static double gc_pulse_value(
     double t,
@@ -279,7 +280,9 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
                   (2.0 * trf + tread);
         }
 
-        if (gap < -1e-15 || (gap > 1e-15 && gap < 20e-9))
+        if (gap < -GC_TIME_TOLERANCE ||
+            (gap > GC_TIME_TOLERANCE &&
+             gap < 20e-9 - GC_TIME_TOLERANCE))
         {
             printf(
                 "gc_retention: read %d overlaps the previous event or "
@@ -632,7 +635,7 @@ static int gc_is_read_high_segment(
     double high_time)
 {
     int i;
-    const double tolerance = 1e-15;
+    const double tolerance = GC_TIME_TOLERANCE;
 
     for (i = 0; i < retention_count; ++i)
     {
@@ -653,7 +656,7 @@ static int gc_is_read_high_segment(
 static void gc_add_time(double *times, int *count, double value)
 {
     int i;
-    const double tolerance = 1e-15;
+    const double tolerance = GC_TIME_TOLERANCE;
 
     for (i = 0; i < *count; ++i)
     {
