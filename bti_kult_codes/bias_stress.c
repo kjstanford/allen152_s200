@@ -65,7 +65,9 @@ using three synchronized 4225-PMU channels:
 * Source: PMU2 channel 1
 
 One initial measurement is followed by one stress interval and another
-measurement for each cumulative value in `stress_times`.
+measurement for each cumulative value in `stress_times`. If the first
+cumulative value is zero, it refers to that initial measurement and does
+not create a duplicate measurement.
 
 During measurement, Drain is held at `vdrain`, Source is held at 0 V,
 and Gate follows a bidirectional staircase from `vgate_start` through
@@ -203,8 +205,10 @@ int bias_stress( double trf, double tplateau, double vdrain, double vgate_start,
     int steps;
     int plateau_count;
     int expected_points;
+    int initial_measurement_extra;
     int i;
     int j;
+    int split_parts;
     double previous_cycle_count;
     double cumulative_cycle_count;
     double direction;
@@ -343,17 +347,18 @@ int bias_stress( double trf, double tplateau, double vdrain, double vgate_start,
     previous_cycle_count = 0;
     for (i = 0; i < stress_times_size; ++i)
     {
-        if (!(stress_times[i] > previous_stress_time) ||
+        if (!(stress_times[i] >= 0.0) ||
+            (i > 0 && !(stress_times[i] > previous_stress_time)) ||
             stress_times[i] - stress_times[i] != 0.0)
         {
-            printf("bias_stress: stress_times must be finite, positive, and strictly increasing.");
+            printf("bias_stress: stress_times must be finite, nonnegative, and strictly increasing after the optional initial zero.");
             return -5;
         }
 
         if (is_dc)
         {
             interval = bti_quantize_time(stress_times[i] - previous_stress_time);
-            if (interval < 60e-9)
+            if (interval > BTI_TIME_TOLERANCE && interval < 60e-9)
             {
                 printf("bias_stress: every incremental DC stress interval must be at least 60 ns.");
                 return -5;
@@ -363,7 +368,7 @@ int bias_stress( double trf, double tplateau, double vdrain, double vgate_start,
         {
             cumulative_cycle_count =
                 floor(stress_times[i] / period + 0.5);
-            if (cumulative_cycle_count <= previous_cycle_count)
+            if (i > 0 && cumulative_cycle_count <= previous_cycle_count)
             {
                 printf("bias_stress: adjacent AC stress times round to the same cycle count.");
                 return -5;
@@ -374,7 +379,12 @@ int bias_stress( double trf, double tplateau, double vdrain, double vgate_start,
     }
 
     plateau_count = 2 * steps + 1;
-    expected_points = (stress_times_size + 1) * plateau_count;
+    /* A leading zero denotes the initial measurement, rather than a
+       second copy of the same measurement sequence. */
+    initial_measurement_extra =
+        (stress_times[0] > BTI_TIME_TOLERANCE) ? 1 : 0;
+    expected_points = (stress_times_size + initial_measurement_extra) *
+                      plateau_count;
     if (expected_points > Gate_V_size || expected_points > Gate_I_size ||
         expected_points > Drain_V_size || expected_points > Drain_I_size ||
         expected_points > Source_V_size || expected_points > Source_I_size ||
@@ -616,19 +626,20 @@ int bias_stress( double trf, double tplateau, double vdrain, double vgate_start,
 
     for (i = 0; i < stress_times_size; ++i)
     {
-        waveform_sequences[waveform_count] = 2;
-        waveform_loops[waveform_count++] = 1.0;
-
         if (is_dc)
         {
             interval = bti_quantize_time(stress_times[i] - previous_stress_time);
-            block_loops = floor(interval / BTI_DC_BLOCK_TIME);
-            remainder = bti_quantize_time(interval - block_loops * BTI_DC_BLOCK_TIME);
-            if (remainder > 0.0 && remainder < 60e-9 && block_loops >= 1.0)
+            if (interval > BTI_TIME_TOLERANCE)
             {
-                block_loops -= 1.0;
-                remainder = bti_quantize_time(remainder + BTI_DC_BLOCK_TIME);
-            }
+                waveform_sequences[waveform_count] = 2;
+                waveform_loops[waveform_count++] = 1.0;
+                block_loops = floor(interval / BTI_DC_BLOCK_TIME);
+                remainder = bti_quantize_time(interval - block_loops * BTI_DC_BLOCK_TIME);
+                if (remainder > 0.0 && remainder < 60e-9 && block_loops >= 1.0)
+                {
+                    block_loops -= 1.0;
+                    remainder = bti_quantize_time(remainder + BTI_DC_BLOCK_TIME);
+                }
 
             if (block_loops >= 1.0)
             {
@@ -647,10 +658,11 @@ int bias_stress( double trf, double tplateau, double vdrain, double vgate_start,
                 double split_duration;
                 segment_count = 0;
                 split_remaining = remainder;
-                for (j = 0; j < 3; ++j)
+                split_parts = (remainder > BTI_DC_BLOCK_TIME) ? 4 : 3;
+                for (j = 0; j < split_parts; ++j)
                 {
                     split_duration = bti_quantize_time(
-                        split_remaining / (3 - j));
+                        split_remaining / (split_parts - j));
                     status = bti_append_segment(
                         &segment_count, gate_start, gate_stop,
                         drain_start, drain_stop, source_start, source_stop,
@@ -671,27 +683,36 @@ int bias_stress( double trf, double tplateau, double vdrain, double vgate_start,
                 if (status) return status;
                 waveform_sequences[waveform_count] = next_sequence++;
                 waveform_loops[waveform_count++] = 1.0;
+                }
             }
         }
         else
         {
             cumulative_cycle_count =
                 floor(stress_times[i] / period + 0.5);
-            if (cumulative_cycle_count - previous_cycle_count > 1e12)
+            if (cumulative_cycle_count > previous_cycle_count)
             {
-                printf("bias_stress: an AC cycle loop count exceeds 1e12.");
-                return -10;
+                waveform_sequences[waveform_count] = 2;
+                waveform_loops[waveform_count++] = 1.0;
+                if (cumulative_cycle_count - previous_cycle_count > 1e12)
+                {
+                    printf("bias_stress: an AC cycle loop count exceeds 1e12.");
+                    return -10;
+                }
+                waveform_sequences[waveform_count] = 3;
+                waveform_loops[waveform_count++] =
+                    cumulative_cycle_count - previous_cycle_count;
+                waveform_sequences[waveform_count] = 4;
+                waveform_loops[waveform_count++] = 1.0;
             }
-            waveform_sequences[waveform_count] = 3;
-            waveform_loops[waveform_count++] =
-                (double)(cumulative_cycle_count - previous_cycle_count);
             previous_cycle_count = cumulative_cycle_count;
         }
 
-        waveform_sequences[waveform_count] = 4;
-        waveform_loops[waveform_count++] = 1.0;
-        waveform_sequences[waveform_count] = 1;
-        waveform_loops[waveform_count++] = 1.0;
+        if (!(i == 0 && stress_times[i] <= BTI_TIME_TOLERANCE))
+        {
+            waveform_sequences[waveform_count] = 1;
+            waveform_loops[waveform_count++] = 1.0;
+        }
         previous_stress_time = stress_times[i];
     }
 
@@ -724,6 +745,8 @@ int bias_stress( double trf, double tplateau, double vdrain, double vgate_start,
         Sleep(10);
 
     return 0;
+
+/* USRLIB MODULE END */
 }
 
 
