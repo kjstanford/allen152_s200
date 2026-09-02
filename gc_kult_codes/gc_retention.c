@@ -80,7 +80,8 @@ within the flat RWL-high interval and is selected by
 `measure_start_fraction` and `measure_stop_fraction`. For example, values
 of 0.2 and 0.8 average from 20% through 80% of `tread`. The fractions must
 satisfy `0 <= start < stop <= 1`. Long unmeasured retention intervals do
-not fill the PMU data buffer.
+not fill the PMU data buffer. Any unmeasured interval longer than 20 s is
+automatically divided into 20-s Segment ARB blocks and a final remainder.
 
 Outputs
 -------
@@ -116,10 +117,11 @@ Other nonzero value
 #include <math.h>
 
 #define GC_MAX_RETENTION_POINTS 256
-#define GC_MAX_SEGMENTS (6 + 4 * GC_MAX_RETENTION_POINTS)
+#define GC_MAX_SEGMENTS 2048
 #define GC_MEAS_SPOT_MEAN_DISCRETE 1UL
 #define GC_TIME_RESOLUTION 10e-9
 #define GC_TIME_TOLERANCE 1e-9
+#define GC_MAX_SEGMENT_TIME 20.0
 static double gc_quantize_time(double value);
 
 
@@ -281,36 +283,56 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
      */
 #define GC_APPEND_SEGMENT(DURATION, WWL0, WWL1, WBL0, WBL1, RWL0, RWL1, MTYPE, MSTART, MSTOP) \
     do { \
-        double gc_duration = gc_quantize_time(DURATION); \
-        if (segment_count >= GC_MAX_SEGMENTS) { \
-            printf("gc_retention: too many Segment ARB segments."); \
-            return -6; \
-        } \
-        if (gc_duration < 20e-9) { \
-            printf("gc_retention: segment %d is shorter than 20 ns.", \
-                   segment_count + 1); \
+        double gc_total_duration = gc_quantize_time(DURATION); \
+        double gc_elapsed = 0.0; \
+        if ((MTYPE) != 0 && gc_total_duration > GC_MAX_SEGMENT_TIME) { \
+            printf("gc_retention: measured segment exceeds 20 s."); \
             return -8; \
         } \
-        segment_time[segment_count] = gc_duration; \
-        total_time[segment_count + 1] = \
-            total_time[segment_count] + gc_duration; \
-        wwl_start[segment_count] = (WWL0); \
-        wwl_stop[segment_count] = (WWL1); \
-        wbl_start[segment_count] = (WBL0); \
-        wbl_stop[segment_count] = (WBL1); \
-        rwl_start[segment_count] = (RWL0); \
-        rwl_stop[segment_count] = (RWL1); \
-        rbl_start[segment_count] = vss; \
-        rbl_stop[segment_count] = vss; \
-        trigger_out[segment_count] = (segment_count == 0) ? 1 : 0; \
-        wwl_ssr[segment_count] = 1; \
-        wbl_ssr[segment_count] = 1; \
-        rwl_ssr[segment_count] = 1; \
-        rbl_ssr[segment_count] = 1; \
-        measure_type[segment_count] = (MTYPE); \
-        measure_start[segment_count] = (MSTART); \
-        measure_stop[segment_count] = (MSTOP); \
-        ++segment_count; \
+        while (gc_elapsed < gc_total_duration - GC_TIME_TOLERANCE) { \
+            double gc_remaining = gc_total_duration - gc_elapsed; \
+            double gc_chunk = (gc_remaining > GC_MAX_SEGMENT_TIME) \
+                                ? GC_MAX_SEGMENT_TIME : gc_remaining; \
+            double gc_after = gc_remaining - gc_chunk; \
+            double gc_f0; \
+            double gc_f1; \
+            if (gc_after > GC_TIME_TOLERANCE && gc_after < 20e-9) { \
+                gc_chunk -= 20e-9 - gc_after; \
+            } \
+            gc_chunk = gc_quantize_time(gc_chunk); \
+            if (segment_count >= GC_MAX_SEGMENTS) { \
+                printf("gc_retention: more than 2048 segments required."); \
+                return -6; \
+            } \
+            if (gc_chunk < 20e-9 || gc_chunk > GC_MAX_SEGMENT_TIME) { \
+                printf("gc_retention: invalid split segment duration."); \
+                return -8; \
+            } \
+            gc_f0 = gc_elapsed / gc_total_duration; \
+            gc_f1 = (gc_elapsed + gc_chunk) / gc_total_duration; \
+            if (gc_f1 > 1.0) gc_f1 = 1.0; \
+            segment_time[segment_count] = gc_chunk; \
+            total_time[segment_count + 1] = \
+                total_time[segment_count] + gc_chunk; \
+            wwl_start[segment_count] = (WWL0) + ((WWL1) - (WWL0)) * gc_f0; \
+            wwl_stop[segment_count] = (WWL0) + ((WWL1) - (WWL0)) * gc_f1; \
+            wbl_start[segment_count] = (WBL0) + ((WBL1) - (WBL0)) * gc_f0; \
+            wbl_stop[segment_count] = (WBL0) + ((WBL1) - (WBL0)) * gc_f1; \
+            rwl_start[segment_count] = (RWL0) + ((RWL1) - (RWL0)) * gc_f0; \
+            rwl_stop[segment_count] = (RWL0) + ((RWL1) - (RWL0)) * gc_f1; \
+            rbl_start[segment_count] = vss; \
+            rbl_stop[segment_count] = vss; \
+            trigger_out[segment_count] = (segment_count == 0) ? 1 : 0; \
+            wwl_ssr[segment_count] = 1; \
+            wbl_ssr[segment_count] = 1; \
+            rwl_ssr[segment_count] = 1; \
+            rbl_ssr[segment_count] = 1; \
+            measure_type[segment_count] = (MTYPE); \
+            measure_start[segment_count] = (MTYPE) ? (MSTART) : 0.0; \
+            measure_stop[segment_count] = (MTYPE) ? (MSTOP) : 0.0; \
+            ++segment_count; \
+            gc_elapsed += gc_chunk; \
+        } \
     } while (0)
 
     total_time[0] = 0.0;
@@ -396,6 +418,21 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
     {
         printf("gc_retention: invalid Segment ARB segment count.");
         return -6;
+    }
+
+    /* Final safety audit before segment_time[] is sent to either PMU. */
+    for (i = 0; i < segment_count; ++i)
+    {
+        if (!(segment_time[i] >= 20e-9) ||
+            segment_time[i] > GC_MAX_SEGMENT_TIME)
+        {
+            printf(
+                "gc_retention: segment %d duration %.17g is outside "
+                "the 20 ns to 20 s limits.",
+                i + 1,
+                segment_time[i]);
+            return -8;
+        }
     }
 
     /* Spot mean returns exactly one averaged value for each read. */

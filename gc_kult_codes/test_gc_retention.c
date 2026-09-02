@@ -3,7 +3,8 @@
  *
  * This program does not require a 4200A-SCS or keithley.h. It constructs
  * the same Segment ARB arrays as gc_retention.c and writes the values that
- * would be passed to the Keithley LPT functions to a CSV file.
+ * would be passed to the Keithley LPT functions to a CSV file. Unmeasured
+ * intervals above 20 s are fragmented into 20-s blocks and a remainder.
  *
  * Build from the repository root in Git Bash:
  *   mkdir -p gc_kult_codes/scratch
@@ -29,11 +30,12 @@
 #include <string.h>
 
 #define GC_MAX_RETENTION_POINTS 256
-#define GC_MAX_SEGMENTS (6 + 4 * GC_MAX_RETENTION_POINTS)
+#define GC_MAX_SEGMENTS 2048
 #define GC_MEAS_NONE 0UL
 #define GC_MEAS_SPOT_MEAN_DISCRETE 1UL
 #define GC_TIME_RESOLUTION 10e-9
 #define GC_TIME_TOLERANCE 1e-9
+#define GC_MAX_SEGMENT_TIME 20.0
 
 typedef struct
 {
@@ -482,6 +484,22 @@ static int gc_build_program(
         return -6;
     }
 
+    /* Independent final audit of every duration destined for Keithley. */
+    for (i = 0; i < program->segment_count; ++i)
+    {
+        if (!(program->segment_time[i] >= 20e-9) ||
+            program->segment_time[i] > GC_MAX_SEGMENT_TIME)
+        {
+            fprintf(
+                stderr,
+                "Validation -8: segment %d duration %.17g is outside "
+                "the 20 ns to 20 s limits.\n",
+                i + 1,
+                program->segment_time[i]);
+            return -8;
+        }
+    }
+
     return 0;
 }
 
@@ -501,46 +519,86 @@ static int gc_append_segment(
     double measure_stop,
     int read_index)
 {
-    int index = program->segment_count;
-    double exact_duration = gc_quantize_time(duration);
+    double total_duration = gc_quantize_time(duration);
+    double elapsed = 0.0;
 
-    if (index >= GC_MAX_SEGMENTS)
+    if (measure_type != GC_MEAS_NONE &&
+        total_duration > GC_MAX_SEGMENT_TIME)
     {
-        fprintf(stderr, "Validation -6: too many Segment ARB segments.\n");
-        return -6;
-    }
-
-    if (exact_duration < 20e-9)
-    {
-        fprintf(
-            stderr,
-            "Validation -8: segment %d is %.17g s, below 20 ns.\n",
-            index + 1,
-            exact_duration);
+        fprintf(stderr, "Validation -8: measured segment exceeds 20 s.\n");
         return -8;
     }
 
-    program->segment_time[index] = exact_duration;
-    program->total_time[index + 1] =
-        program->total_time[index] + exact_duration;
-    program->wwl_start[index] = wwl_start;
-    program->wwl_stop[index] = wwl_stop;
-    program->wbl_start[index] = wbl_start;
-    program->wbl_stop[index] = wbl_stop;
-    program->rwl_start[index] = rwl_start;
-    program->rwl_stop[index] = rwl_stop;
-    program->rbl_start[index] = config->vss;
-    program->rbl_stop[index] = config->vss;
-    program->trigger_out[index] = (index == 0) ? 1 : 0;
-    program->wwl_ssr[index] = 1;
-    program->wbl_ssr[index] = 1;
-    program->rwl_ssr[index] = 1;
-    program->rbl_ssr[index] = 1;
-    program->measure_type[index] = measure_type;
-    program->measure_start[index] = measure_start;
-    program->measure_stop[index] = measure_stop;
-    program->read_index[index] = read_index;
-    program->segment_count = index + 1;
+    while (elapsed < total_duration - GC_TIME_TOLERANCE)
+    {
+        int index = program->segment_count;
+        double remaining = total_duration - elapsed;
+        double chunk = (remaining > GC_MAX_SEGMENT_TIME)
+                           ? GC_MAX_SEGMENT_TIME
+                           : remaining;
+        double after = remaining - chunk;
+        double fraction_start;
+        double fraction_stop;
+
+        /* Avoid creating an illegal final remainder below 20 ns. */
+        if (after > GC_TIME_TOLERANCE && after < 20e-9)
+            chunk -= 20e-9 - after;
+
+        chunk = gc_quantize_time(chunk);
+
+        if (index >= GC_MAX_SEGMENTS)
+        {
+            fprintf(
+                stderr,
+                "Validation -6: more than 2048 segments required.\n");
+            return -6;
+        }
+
+        if (chunk < 20e-9 || chunk > GC_MAX_SEGMENT_TIME)
+        {
+            fprintf(
+                stderr,
+                "Validation -8: invalid split duration %.17g s.\n",
+                chunk);
+            return -8;
+        }
+
+        fraction_start = elapsed / total_duration;
+        fraction_stop = (elapsed + chunk) / total_duration;
+        if (fraction_stop > 1.0)
+            fraction_stop = 1.0;
+
+        program->segment_time[index] = chunk;
+        program->total_time[index + 1] =
+            program->total_time[index] + chunk;
+        program->wwl_start[index] =
+            wwl_start + (wwl_stop - wwl_start) * fraction_start;
+        program->wwl_stop[index] =
+            wwl_start + (wwl_stop - wwl_start) * fraction_stop;
+        program->wbl_start[index] =
+            wbl_start + (wbl_stop - wbl_start) * fraction_start;
+        program->wbl_stop[index] =
+            wbl_start + (wbl_stop - wbl_start) * fraction_stop;
+        program->rwl_start[index] =
+            rwl_start + (rwl_stop - rwl_start) * fraction_start;
+        program->rwl_stop[index] =
+            rwl_start + (rwl_stop - rwl_start) * fraction_stop;
+        program->rbl_start[index] = config->vss;
+        program->rbl_stop[index] = config->vss;
+        program->trigger_out[index] = (index == 0) ? 1 : 0;
+        program->wwl_ssr[index] = 1;
+        program->wbl_ssr[index] = 1;
+        program->rwl_ssr[index] = 1;
+        program->rbl_ssr[index] = 1;
+        program->measure_type[index] = measure_type;
+        program->measure_start[index] =
+            (measure_type != GC_MEAS_NONE) ? measure_start : 0.0;
+        program->measure_stop[index] =
+            (measure_type != GC_MEAS_NONE) ? measure_stop : 0.0;
+        program->read_index[index] = read_index;
+        program->segment_count = index + 1;
+        elapsed += chunk;
+    }
 
     return 0;
 }
