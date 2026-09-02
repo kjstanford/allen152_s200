@@ -116,43 +116,10 @@ Other nonzero value
 #include <math.h>
 
 #define GC_MAX_RETENTION_POINTS 256
-#define GC_MAX_BREAKPOINTS (8 + 4 * GC_MAX_RETENTION_POINTS)
-#define GC_MAX_SEGMENTS (GC_MAX_BREAKPOINTS - 1)
+#define GC_MAX_SEGMENTS (6 + 4 * GC_MAX_RETENTION_POINTS)
 #define GC_MEAS_SPOT_MEAN_DISCRETE 1UL
 #define GC_TIME_RESOLUTION 10e-9
 #define GC_TIME_TOLERANCE 1e-9
-
-static double gc_pulse_value(
-    double t,
-    double low_value,
-    double high_value,
-    double t0,
-    double rise,
-    double high_time,
-    double fall);
-
-static double gc_read_value(
-    double t,
-    double low_value,
-    double high_value,
-    double retention_origin,
-    double *retention_times,
-    int retention_count,
-    double rise,
-    double high_time,
-    double fall);
-
-static int gc_is_read_high_segment(
-    double segment_start,
-    double segment_stop,
-    double retention_origin,
-    double *retention_times,
-    int retention_count,
-    double rise,
-    double high_time);
-
-static void gc_add_time(double *times, int *count, double value);
-static void gc_sort_times(double *times, int count);
 static double gc_quantize_time(double value);
 
 
@@ -161,7 +128,7 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
 {
 /* USRLIB MODULE CODE */
 
-    double breakpoints[GC_MAX_BREAKPOINTS];
+    double total_time[GC_MAX_SEGMENTS + 1];
     double segment_time[GC_MAX_SEGMENTS];
 
     double wwl_start[GC_MAX_SEGMENTS];
@@ -188,23 +155,20 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
     int pmu1;
     int pmu2;
     int status;
-    int point_count = 0;
-    int segment_count;
+    int segment_count = 0;
     int i;
     double elapsed_time;
     double expected_points;
     double gap;
     double measure_window;
 
-    double write_start;
-    double wwl_rise_end;
-    double wwl_high_end;
-    double wwl_end;
-    double wbl_high_end;
-    double retention_origin;
-    double total_time;
     double wbl_base;
     double wbl_data;
+    double programmed_tdelay;
+    double programmed_trf;
+    double programmed_twrite;
+    double programmed_tread;
+    double read_pulse_time;
 
     if (!(trf >= 20e-9) || !(twrite >= 20e-9) ||
         !(tread >= 20e-9) || !(tdelay >= 0.0) ||
@@ -245,8 +209,22 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
         return -4;
     }
 
+    programmed_tdelay = gc_quantize_time(tdelay);
+    programmed_trf = gc_quantize_time(trf);
+    programmed_twrite = gc_quantize_time(twrite);
+    programmed_tread = gc_quantize_time(tread);
+
+    if (programmed_trf < 20e-9 || programmed_twrite < 20e-9 ||
+        programmed_tread < 20e-9 ||
+        (programmed_tdelay > 0.0 && programmed_tdelay < 20e-9))
+    {
+        printf("gc_retention: timing rounds below the 20 ns minimum.");
+        return -1;
+    }
+
     measure_window =
-        (measure_stop_fraction - measure_start_fraction) * tread;
+        (measure_stop_fraction - measure_start_fraction) *
+        programmed_tread;
 
     if (measure_window < 10e-9 || measure_window * sample_rate < 1.0)
     {
@@ -255,6 +233,8 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
             "and contain at least one sample.");
         return -4;
     }
+
+    read_pulse_time = 2.0 * programmed_trf + programmed_tread;
 
     /*
      * Validate cumulative read-start times. A zero gap is allowed, but
@@ -277,7 +257,7 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
         else
         {
             gap = retention_times[i] - retention_times[i - 1] -
-                  (2.0 * trf + tread);
+                  read_pulse_time;
         }
 
         if (gap < -GC_TIME_TOLERANCE ||
@@ -292,44 +272,124 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
         }
     }
 
-    write_start     = tdelay;
-    wwl_rise_end    = write_start + trf;
-    wwl_high_end    = wwl_rise_end + twrite;
-    wwl_end         = wwl_high_end + trf;
-    wbl_high_end    = wwl_rise_end + twrite + 2.0 * trf;
-    retention_origin = wbl_high_end + trf;
-
     wbl_base = (state == 1) ? vdata0 : vdata1;
     wbl_data = (state == 1) ? vdata1 : vdata0;
 
-    total_time = retention_origin +
-                 retention_times[retention_times_size - 1] +
-                 2.0 * trf + tread;
+    /*
+     * Append exact segment durations directly. total_time[] is cumulative
+     * bookkeeping only; segment_time[] is the array sent to Keithley.
+     */
+#define GC_APPEND_SEGMENT(DURATION, WWL0, WWL1, WBL0, WBL1, RWL0, RWL1, MTYPE, MSTART, MSTOP) \
+    do { \
+        double gc_duration = gc_quantize_time(DURATION); \
+        if (segment_count >= GC_MAX_SEGMENTS) { \
+            printf("gc_retention: too many Segment ARB segments."); \
+            return -6; \
+        } \
+        if (gc_duration < 20e-9) { \
+            printf("gc_retention: segment %d is shorter than 20 ns.", \
+                   segment_count + 1); \
+            return -8; \
+        } \
+        segment_time[segment_count] = gc_duration; \
+        total_time[segment_count + 1] = \
+            total_time[segment_count] + gc_duration; \
+        wwl_start[segment_count] = (WWL0); \
+        wwl_stop[segment_count] = (WWL1); \
+        wbl_start[segment_count] = (WBL0); \
+        wbl_stop[segment_count] = (WBL1); \
+        rwl_start[segment_count] = (RWL0); \
+        rwl_stop[segment_count] = (RWL1); \
+        rbl_start[segment_count] = vss; \
+        rbl_stop[segment_count] = vss; \
+        trigger_out[segment_count] = (segment_count == 0) ? 1 : 0; \
+        wwl_ssr[segment_count] = 1; \
+        wbl_ssr[segment_count] = 1; \
+        rwl_ssr[segment_count] = 1; \
+        rbl_ssr[segment_count] = 1; \
+        measure_type[segment_count] = (MTYPE); \
+        measure_start[segment_count] = (MSTART); \
+        measure_stop[segment_count] = (MSTOP); \
+        ++segment_count; \
+    } while (0)
 
-    gc_add_time(breakpoints, &point_count, 0.0);
-    gc_add_time(breakpoints, &point_count, write_start);
-    gc_add_time(breakpoints, &point_count, wwl_rise_end);
-    gc_add_time(breakpoints, &point_count, wwl_high_end);
-    gc_add_time(breakpoints, &point_count, wwl_end);
-    gc_add_time(breakpoints, &point_count, wbl_high_end);
-    gc_add_time(breakpoints, &point_count, retention_origin);
+    total_time[0] = 0.0;
+
+    if (programmed_tdelay > 0.0)
+    {
+        GC_APPEND_SEGMENT(
+            programmed_tdelay,
+            vhold, vhold, wbl_base, wbl_base, vss, vss,
+            0, 0.0, 0.0);
+    }
+
+    /* WWL and WBL rise together. */
+    GC_APPEND_SEGMENT(
+        programmed_trf,
+        vhold, vboost, wbl_base, wbl_data, vss, vss,
+        0, 0.0, 0.0);
+
+    /* Both write signals remain high for twrite. */
+    GC_APPEND_SEGMENT(
+        programmed_twrite,
+        vboost, vboost, wbl_data, wbl_data, vss, vss,
+        0, 0.0, 0.0);
+
+    /* WWL falls while WBL remains at the write-data level. */
+    GC_APPEND_SEGMENT(
+        programmed_trf,
+        vboost, vhold, wbl_data, wbl_data, vss, vss,
+        0, 0.0, 0.0);
+
+    /* WBL remains at the write level for one additional trf. */
+    GC_APPEND_SEGMENT(
+        programmed_trf,
+        vhold, vhold, wbl_data, wbl_data, vss, vss,
+        0, 0.0, 0.0);
+
+    /* WBL returns to the opposite state; retention time starts here. */
+    GC_APPEND_SEGMENT(
+        programmed_trf,
+        vhold, vhold, wbl_data, wbl_base, vss, vss,
+        0, 0.0, 0.0);
+
+    /* total_time[segment_count] is the programmed retention-time origin. */
 
     for (i = 0; i < retention_times_size; ++i)
     {
-        double read_start = retention_origin + retention_times[i];
-        double read_rise_end = read_start + trf;
-        double read_high_end = read_rise_end + tread;
-        double read_end = read_high_end + trf;
+        if (i == 0)
+            gap = retention_times[0];
+        else
+            gap = retention_times[i] - retention_times[i - 1] -
+                  read_pulse_time;
 
-        gc_add_time(breakpoints, &point_count, read_start);
-        gc_add_time(breakpoints, &point_count, read_rise_end);
-        gc_add_time(breakpoints, &point_count, read_high_end);
-        gc_add_time(breakpoints, &point_count, read_end);
+        if (gap > GC_TIME_TOLERANCE)
+        {
+            GC_APPEND_SEGMENT(
+                gap,
+                vhold, vhold, wbl_base, wbl_base, vss, vss,
+                0, 0.0, 0.0);
+        }
+
+        GC_APPEND_SEGMENT(
+            programmed_trf,
+            vhold, vhold, wbl_base, wbl_base, vss, vdd,
+            0, 0.0, 0.0);
+
+        GC_APPEND_SEGMENT(
+            programmed_tread,
+            vhold, vhold, wbl_base, wbl_base, vdd, vdd,
+            GC_MEAS_SPOT_MEAN_DISCRETE,
+            measure_start_fraction * programmed_tread,
+            measure_stop_fraction * programmed_tread);
+
+        GC_APPEND_SEGMENT(
+            programmed_trf,
+            vhold, vhold, wbl_base, wbl_base, vdd, vss,
+            0, 0.0, 0.0);
     }
 
-    gc_add_time(breakpoints, &point_count, total_time);
-    gc_sort_times(breakpoints, point_count);
-    segment_count = point_count - 1;
+#undef GC_APPEND_SEGMENT
 
     if (segment_count < 3 || segment_count > GC_MAX_SEGMENTS ||
         segment_count > 2048)
@@ -352,76 +412,6 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
             "need approximately %.0f points.",
             expected_points);
         return -7;
-    }
-
-    for (i = 0; i < segment_count; ++i)
-    {
-        double t0 = breakpoints[i];
-        double t1 = breakpoints[i + 1];
-
-        /*
-         * Breakpoints are absolute times. At retention times of several
-         * seconds, subtracting them can make a nominal 20 ns edge appear
-         * infinitesimally shorter due to floating-point cancellation.
-         * Program durations on the PMU's native 10 ns timing grid.
-         */
-        segment_time[i] = gc_quantize_time(t1 - t0);
-
-        if (segment_time[i] < 20e-9)
-        {
-            printf(
-                "gc_retention: segment %d is shorter than 20 ns.",
-                i + 1);
-            return -8;
-        }
-
-        wwl_start[i] = gc_pulse_value(
-            t0, vhold, vboost, write_start, trf, twrite, trf);
-        wwl_stop[i] = gc_pulse_value(
-            t1, vhold, vboost, write_start, trf, twrite, trf);
-
-        wbl_start[i] = gc_pulse_value(
-            t0, wbl_base, wbl_data, write_start,
-            trf, twrite + 2.0 * trf, trf);
-        wbl_stop[i] = gc_pulse_value(
-            t1, wbl_base, wbl_data, write_start,
-            trf, twrite + 2.0 * trf, trf);
-
-        rwl_start[i] = gc_read_value(
-            t0, vss, vdd, retention_origin,
-            retention_times, retention_times_size,
-            trf, tread, trf);
-        rwl_stop[i] = gc_read_value(
-            t1, vss, vdd, retention_origin,
-            retention_times, retention_times_size,
-            trf, tread, trf);
-
-        rbl_start[i] = vss;
-        rbl_stop[i] = vss;
-
-        trigger_out[i] = (i == 0) ? 1 : 0;
-        wwl_ssr[i] = 1;
-        wbl_ssr[i] = 1;
-        rwl_ssr[i] = 1;
-        rbl_ssr[i] = 1;
-
-        if (gc_is_read_high_segment(
-                t0, t1, retention_origin,
-                retention_times, retention_times_size,
-                trf, tread))
-        {
-            measure_type[i] = GC_MEAS_SPOT_MEAN_DISCRETE;
-            measure_start[i] =
-                measure_start_fraction * segment_time[i];
-            measure_stop[i] =
-                measure_stop_fraction * segment_time[i];
-        }
-        else
-        {
-            measure_type[i] = 0;
-            measure_start[i] = 0.0;
-            measure_stop[i] = 0.0;
-        }
     }
 
     getinstid(PMU_ID1, &pmu1);
@@ -564,130 +554,6 @@ int gc_retention( double vhold, double vboost, double vdata0, double vdata1, dou
 
 /* USRLIB MODULE END */
 }       /* End gc_retention.c */
-
-
-static double gc_pulse_value(
-    double t,
-    double low_value,
-    double high_value,
-    double t0,
-    double rise,
-    double high_time,
-    double fall)
-{
-    double t1 = t0 + rise;
-    double t2 = t1 + high_time;
-    double t3 = t2 + fall;
-
-    if (t <= t0)
-        return low_value;
-    if (t < t1)
-        return low_value +
-               (high_value - low_value) * (t - t0) / rise;
-    if (t <= t2)
-        return high_value;
-    if (t < t3)
-        return high_value +
-               (low_value - high_value) * (t - t2) / fall;
-    return low_value;
-}
-
-
-/* Return RWL for the read pulse that contains t, or vss between reads. */
-static double gc_read_value(
-    double t,
-    double low_value,
-    double high_value,
-    double retention_origin,
-    double *retention_times,
-    int retention_count,
-    double rise,
-    double high_time,
-    double fall)
-{
-    int i;
-
-    for (i = 0; i < retention_count; ++i)
-    {
-        double read_start = retention_origin + retention_times[i];
-        double read_end = read_start + rise + high_time + fall;
-
-        if (t <= read_end)
-        {
-            return gc_pulse_value(
-                t, low_value, high_value, read_start,
-                rise, high_time, fall);
-        }
-    }
-
-    return low_value;
-}
-
-
-/* Identify the high-level segment of any RWL read pulse. */
-static int gc_is_read_high_segment(
-    double segment_start,
-    double segment_stop,
-    double retention_origin,
-    double *retention_times,
-    int retention_count,
-    double rise,
-    double high_time)
-{
-    int i;
-    const double tolerance = GC_TIME_TOLERANCE;
-
-    for (i = 0; i < retention_count; ++i)
-    {
-        double high_start = retention_origin + retention_times[i] + rise;
-        double high_stop = high_start + high_time;
-
-        if (fabs(segment_start - high_start) < tolerance &&
-            fabs(segment_stop - high_stop) < tolerance)
-        {
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-
-static void gc_add_time(double *times, int *count, double value)
-{
-    int i;
-    const double tolerance = GC_TIME_TOLERANCE;
-
-    for (i = 0; i < *count; ++i)
-    {
-        if (fabs(times[i] - value) < tolerance)
-            return;
-    }
-
-    times[*count] = value;
-    ++(*count);
-}
-
-
-static void gc_sort_times(double *times, int count)
-{
-    int i;
-    int j;
-    double temporary;
-
-    for (i = 0; i < count - 1; ++i)
-    {
-        for (j = i + 1; j < count; ++j)
-        {
-            if (times[j] < times[i])
-            {
-                temporary = times[i];
-                times[i] = times[j];
-                times[j] = temporary;
-            }
-        }
-    }
-}
 
 
 /* Round a duration to the 4225-PMU Segment ARB 10 ns timing grid. */
